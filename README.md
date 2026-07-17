@@ -1,0 +1,59 @@
+English | [한국어](README.ko.md)
+
+# research-survey
+
+> Turn a research interest into a tracked, evidence-grounded survey — extract → summarize → triple-verify → insights/hypotheses → keep tracking new papers.
+
+- [Quick Start](#quick-start)
+- [Why research-survey?](#why-research-survey)
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Requirements](#requirements)
+- [License](#license)
+
+## Quick Start
+```
+/plugin marketplace add <owner>/gptaku-plugins   # or a local path
+/plugin install research-survey
+# restart Claude Code, then:
+/research-survey tutorial          # learn the pipeline live (~15 min)
+/research-survey init <topic>      # scaffold a standards-compliant workspace
+/research-survey run <category>    # run one full survey cycle
+```
+
+## Why research-survey?
+A "bare-LLM summary" reads plausible but has no sources. A **grounded survey** ties every number
+back to a page in the paper (`— Table 1, p.6`) and filters hallucinations through
+**producer ≠ evaluator** triple verification. This plugin teaches and runs that difference.
+
+## How it works
+```
+[dial]    taxonomy.json defines the topic (one file governs both snapshot + daily feed)
+   -> [extract]  deterministic multi-label classification (reproducible, no-hallucination)
+   -> [shortlist]
+   -> [summarize] per-paper PDF-grounded summary (4-part + page-cited Evidence + source_pdf)
+   -> [verify]   TRIPLE: self-check -> independent re-measure -> sample PDF cross-read
+   -> [organize] Notion / wiki accumulation + insight extraction
+   -> [hypothesis] idea-critic scoring (reviewer + inspector) -> accept/hold -> ledger
+   -> [continuous] daily arXiv matched by the same dial -> digest
+```
+
+## Features
+| Component | What |
+|---|---|
+| `/research-survey` command | Router: `tutorial` / `init` / `run` / `help` |
+| `research-survey-main` skill | Live tutorial + orchestration (RUNBOOK is the SOT) |
+| `research-survey-init` skill | Scaffolds a workspace-standards workspace (10-unit numbering, CLAUDE.md 12-section) |
+| `research-survey-run` skill | One category cycle: extract → summarize → triple-verify → organize |
+| references/ | RUNBOOK · phase_contracts · taxonomy_dial · quality_gates · roles · citation_rules |
+| assets/templates/ | taxonomy dial · survey section · self-contained comparison HTML · example workspace |
+| examples/ | ICML 2026 worked example (6,628 papers, 9 categories — real counts, verdicts, incidents) |
+
+## Requirements
+- Claude Code. Core tutorial runs locally (python3 stdlib for classify/verify scripts).
+- Optional: a paper corpus (title/abstract/PDF) and destinations (Notion / a wiki).
+
+## License
+MIT
+
+<p align="center"><sub>Research is useful only when it leaves behind reusable, sourced structure.</sub></p>

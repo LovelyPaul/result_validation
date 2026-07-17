@@ -1,0 +1,29 @@
+{
+  "_doc": "관심 주제 다이얼 템플릿. 카테고리를 추가/조정해 무엇을 모을지 정한다. 편집→재분류→summary diff 보고가 조정 루프. 정규식에 인라인 (?i) 금지(분류기가 IGNORECASE 컴파일). 사용법: references/taxonomy_dial.md.",
+  "title_weight": 3,
+  "default_threshold": 3,
+  "guards": {
+    "lm": "\\b(LLMs?|large language models?|language models?|foundation models?|GPT[-0-9a-z]*)\\b",
+    "vlm": "\\b(VLMs?|MLLMs?|vision[- ]language|visual language|multi[- ]?modal (?:large )?(?:language )?models?|LVLMs?)\\b",
+    "med": "\\b(medical|clinical|radiolog\\w+|patholog\\w+|CT scans?|X-?rays?|CXR|MRI|ultrasound|EHR|biomedical)\\b"
+  },
+  "categories": {
+    "example-topic": {
+      "desc": "예시 카테고리 — 실제 관심 주제로 교체하세요(예: LLM 사전학습, 의료 데이터 생성).",
+      "guard": "lm",
+      "threshold": 3,
+      "patterns": [
+        "\\bpre[- ]?train(?:ing|ed)?\\b",
+        "\\bscaling laws?\\b",
+        "\\bdata (?:mixture|curation|selection|synthesis|generation)\\b"
+      ],
+      "relevance_terms": [
+        "\\bfoundation models?\\b"
+      ],
+      "noise_terms": [
+        "\\b(?:protein|molecul\\w+|genomic)\\b"
+      ],
+      "exclude": []
+    }
+  }
+}

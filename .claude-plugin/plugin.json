@@ -1,0 +1,24 @@
+{
+  "name": "research-survey",
+  "version": "0.1.0",
+  "description": "관심 연구 주제(taxonomy 다이얼)로 학회/arXiv 논문을 추출→요약→3중검증→인사이트·가설·서베이로 정리하는 지속 서베이 튜토리얼. ICML2026 worked example + 표준 워크스페이스 스캐폴딩 포함.",
+  "author": {
+    "name": "HanEol-Lee77",
+    "url": "https://github.com/HanEol-Lee77"
+  },
+  "homepage": "https://github.com/HanEol-Lee77/research-survey",
+  "repository": "https://github.com/HanEol-Lee77/research-survey",
+  "license": "MIT",
+  "keywords": [
+    "research",
+    "survey",
+    "literature-review",
+    "paper-survey",
+    "taxonomy",
+    "arxiv",
+    "icml",
+    "evidence-gating",
+    "producer-evaluator",
+    "tutorial"
+  ]
+}

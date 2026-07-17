@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  자립형 대조표 1장 (외부 CSS/JS/폰트 참조 0). 에이전트가 {{슬롯}}을 텍스트 치환으로 채운다.
+  용도: "맨몸 LLM 요약 vs 근거 추적 서베이"를 나란히 비교(줌 화면공유용 큰 글자·강한 대비).
+  슬롯: {{TOPIC}} {{DATE}} {{PAPER_TITLE}} {{PAPER_LINK}}
+        {{NAIVE_SUMMARY}} {{GROUNDED_SUMMARY}} {{EVIDENCE_ROWS}} {{FILTERED_ROWS}} {{KEY_MESSAGE}}
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TOPIC}} — 서베이 대조표</title>
+<style>
+  :root{
+    --bg:#1c1917; --panel:#292524; --ink:#f5f5f4; --muted:#a8a29e; --line:#44403c;
+    --bad:#f87171; --good:#4ade80; --warn:#fbbf24; --accent:#38bdf8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.55;padding:32px}
+  h1{font-size:30px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 24px;font-size:15px}
+  .paper{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+         padding:14px 18px;margin-bottom:20px}
+  .paper a{color:var(--accent);text-decoration:none}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .card h2{margin:0 0 10px;font-size:18px}
+  .tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;margin-left:8px}
+  .tag.naive{background:rgba(248,113,113,.15);color:var(--bad);border:1px solid var(--bad)}
+  .tag.grounded{background:rgba(74,222,128,.15);color:var(--good);border:1px solid var(--good)}
+  table{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:15px}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+  th{background:#0c0a09;color:var(--muted);font-weight:600}
+  .badge{font-size:12px;font-weight:700;padding:1px 7px;border-radius:5px}
+  .badge.bad{background:rgba(248,113,113,.2);color:var(--bad)}
+  .badge.good{background:rgba(74,222,128,.2);color:var(--good)}
+  .badge.warn{background:rgba(251,191,36,.2);color:var(--warn)}
+  .glossary{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .key{background:linear-gradient(90deg,rgba(56,189,248,.14),transparent);
+       border-left:4px solid var(--accent);padding:16px 20px;border-radius:0 10px 10px 0;font-size:17px}
+  code{background:#0c0a09;padding:1px 6px;border-radius:4px;color:var(--warn)}
+</style>
+</head>
+<body>
+  <h1>{{TOPIC}} — 서베이 대조표</h1>
+  <p class="sub">{{DATE}} · 맨몸 LLM 요약 vs 근거 추적 서베이</p>
+
+  <div class="paper">📄 <strong>{{PAPER_TITLE}}</strong> — <a href="{{PAPER_LINK}}">원문</a></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>맨몸 LLM 요약 <span class="tag naive">근거 없음</span></h2>
+      <div>{{NAIVE_SUMMARY}}</div>
+    </div>
+    <div class="card">
+      <h2>근거 추적 서베이 <span class="tag grounded">원문 되짚음</span></h2>
+      <div>{{GROUNDED_SUMMARY}}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>주장 / 수치</th><th>근거 (원문 위치)</th><th>판정</th></tr></thead>
+    <tbody>
+      {{EVIDENCE_ROWS}}
+      <!-- 예: <tr><td>Entity F1 39.11 (SFT 18.73)</td><td>Table 1, p.6</td><td><span class="badge good">정답</span></td></tr> -->
+    </tbody>
+  </table>
+
+  <table>
+    <thead><tr><th>검증 하네스가 걸러낸 것</th><th>어떻게</th></tr></thead>
+    <tbody>
+      {{FILTERED_ROWS}}
+      <!-- 예: <tr><td>발명된 수치</td><td>PDF 표에 없음 → contradicted</td></tr> -->
+    </tbody>
+  </table>
+
+  <p class="glossary">
+    <strong>용어</strong> — <code>근거 인용</code>: 수치 옆 원문 위치 ·
+    <code>producer≠evaluator</code>: 만든 사람이 채점하지 않음 ·
+    <code>3중 검증</code>: 자가검증→독립 실측→표본 원문 대조
+  </p>
+
+  <div class="key">{{KEY_MESSAGE}}</div>
+</body>
+</html>

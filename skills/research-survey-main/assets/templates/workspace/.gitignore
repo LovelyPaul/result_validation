@@ -1,0 +1,9 @@
+# Claude Code 로컬 설정·비밀
+.claude/settings.local.json
+*.env
+.env
+# 대용량 코퍼스/PDF (필요 시 주석 해제)
+# 60-data/raw/
+# 파이썬
+__pycache__/
+*.pyc

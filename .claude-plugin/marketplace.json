@@ -1,0 +1,17 @@
+{
+  "name": "research-survey",
+  "description": "관심 연구 주제로 논문을 추출→요약→3중검증→인사이트·가설·서베이로 정리하는 지속 서베이 튜토리얼(로컬 단일-플러그인 마켓플레이스).",
+  "owner": {
+    "name": "HanEol-Lee77",
+    "url": "https://github.com/HanEol-Lee77"
+  },
+  "plugins": [
+    {
+      "name": "research-survey",
+      "source": ".",
+      "description": "관심 연구 주제로 논문을 추출→요약→3중검증→인사이트·가설·서베이로 정리하는 지속 서베이 튜토리얼. ICML2026 worked example + 표준 워크스페이스 스캐폴딩 포함.",
+      "category": "education",
+      "tags": ["research", "survey", "literature-review", "arxiv", "taxonomy", "tutorial"]
+    }
+  ]
+}
