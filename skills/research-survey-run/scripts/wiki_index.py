@@ -71,16 +71,25 @@ def fts5_available():
 
 
 def load_notes(notes_dir):
-    """notes/*.md → [{id, title, tags, body, sha, path}]. id는 frontmatter 우선, 없으면 stem."""
+    """notes/*.md → [{id, title, tags, body, sha, path}]. id는 frontmatter 우선, 없으면 stem.
+    노트 id 유일성은 wiki 기본 불변식 — 중복 id 발견 시 fail-closed(SystemExit). 조용히
+    dict 붕괴로 한 노트를 잃는 것을 금지한다 (R1 major-3, reviewer-codex 실재현)."""
     out = []
+    seen = {}
     for p in sorted(Path(notes_dir).glob("*.md")):
         text = p.read_text(encoding="utf-8")
         fm, body = parse_frontmatter(text)
+        nid = fm.get("id") or p.stem
+        if nid in seen:
+            raise SystemExit(
+                f"duplicate note id '{nid}' — {seen[nid]} ↔ {p}. 노트 id는 유일해야 한다"
+                f"(fail-closed). 한쪽 노트의 frontmatter id를 바꾼 뒤 다시 색인하라.")
+        seen[nid] = p
         tags = fm.get("tags") or []
         if isinstance(tags, str):
             tags = [tags]
         out.append({
-            "id": fm.get("id") or p.stem,
+            "id": nid,
             "title": fm.get("title") or p.stem,
             "tags": tags,
             "body": body.strip(),
@@ -188,6 +197,10 @@ def build_index(workspace):
     # B6 엣지 + D2 감사 (매 색인마다 — zero-LLM 결정론)
     edges = extract_edges(notes)
     audit_result = audit(notes, edges)
+    # id↔파일 stem 불일치도 감사에 포함 (R1 major-3 — 위키링크 [[id]]와 파일명이 어긋나면 추적 혼선)
+    audit_result["id_stem_mismatch"] = [
+        {"id": n["id"], "stem": Path(n["path"]).stem} for n in notes
+        if Path(n["path"]).stem != n["id"]]
     (index_dir / "edges.json").write_text(
         json.dumps(edges, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -250,6 +263,27 @@ def _self_test():
         m3, _ = build_index(str(ws))
         if m3["delta"]["changed"] != ["beta"] or m3["delta"]["added"] or m3["delta"]["removed"]:
             failures.append(f"C4 변경 델타 오류: {m3['delta']}")
+        # R1 major-3: 중복 frontmatter id → fail-closed (조용한 붕괴 금지)
+        (notes / "dup1.md").write_text(
+            "---\nid: dup\ntitle: D1\ncreated: 2026-07-20\ntags: [x]\nsource: p.1\n---\n"
+            "## Compiled Truth\n\nA\n\n## Timeline\n\n- x\n", encoding="utf-8")
+        (notes / "dup2.md").write_text(
+            "---\nid: dup\ntitle: D2\ncreated: 2026-07-20\ntags: [x]\nsource: p.1\n---\n"
+            "## Compiled Truth\n\nB\n\n## Timeline\n\n- x\n", encoding="utf-8")
+        try:
+            build_index(str(ws))
+            failures.append("중복 id를 fail-closed하지 않음")
+        except SystemExit as e:
+            if "duplicate note id 'dup'" not in str(e):
+                failures.append(f"중복 id 에러 메시지 이상: {e}")
+        (notes / "dup2.md").unlink()
+        # id↔stem 불일치 감사: dup1.md의 id=dup ≠ stem=dup1
+        m4, _ = build_index(str(ws))
+        if {"id": "dup", "stem": "dup1"} not in m4["audit"]["id_stem_mismatch"]:
+            failures.append(f"id↔stem 불일치 감사 누락: {m4['audit'].get('id_stem_mismatch')}")
+        (notes / "dup1.md").unlink()
+        m5, _ = build_index(str(ws))  # 정리 후 다음 검증으로
+
         # FTS5 모드면 델타 반영 후에도 검색 가능해야
         if m3["mode"] == "fts5":
             conn = sqlite3.connect(str(index_dir / "wiki.db"))
@@ -290,6 +324,9 @@ def main():
               f"broken link {len(a_['broken_links'])}건 {[(b['src'], b['dst']) for b in a_['broken_links']]}")
     else:
         print("감사(D2): orphan 0 · broken link 0")
+    if a_.get("id_stem_mismatch"):
+        print(f"감사(D2): id↔stem 불일치 {len(a_['id_stem_mismatch'])}건 "
+              f"{[(x['id'], x['stem']) for x in a_['id_stem_mismatch']]}")
     if m["mode"] == "python-fallback":
         print("  (FTS5 미가용 — wiki_query가 순수 파이썬 bigram BM25로 랭킹합니다.)")
 

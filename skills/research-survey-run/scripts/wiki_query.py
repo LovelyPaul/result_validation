@@ -142,11 +142,17 @@ def fts5_top(db_path, question, k=BM25_TOPK):
 # ── 노트 로드·리포트 ────────────────────────────────────────────────
 
 def load_notes(notes_dir):
-    """notes/*.md → {id: {title, body, tags, path}}. id는 frontmatter 우선, 없으면 stem."""
+    """notes/*.md → {id: {title, body, tags, path}}. id는 frontmatter 우선, 없으면 stem.
+    중복 id는 fail-closed(SystemExit) — dict overwrite로 한 노트 본문을 조용히 잃는 것을
+    금지한다 (R1 major-3, wiki_index.load_notes와 동일 불변식)."""
     out = {}
     for p in sorted(Path(notes_dir).glob("*.md")):
         fm, body = parse_frontmatter(p.read_text(encoding="utf-8"))
         nid = fm.get("id") or p.stem
+        if nid in out:
+            raise SystemExit(
+                f"duplicate note id '{nid}' — {out[nid]['path']} ↔ {p}. 노트 id는 유일해야 한다"
+                f"(fail-closed). 한쪽 노트의 frontmatter id를 바꾼 뒤 다시 검색하라.")
         out[nid] = {"title": fm.get("title") or p.stem, "body": body.strip(),
                     "tags": fm.get("tags") or [], "source": fm.get("source", ""), "path": str(p)}
     return out
@@ -254,6 +260,17 @@ def _self_test():
         for wl in re.findall(r"\[\[([^\]]+)\]\]", report):
             if wl not in {"alpha", "beta"}:
                 failures.append(f"dangling 위키링크: {wl}")
+
+        # R1 major-3: 중복 frontmatter id → fail-closed (dict overwrite 본문 유실 금지)
+        (notes / "dup2.md").write_text(
+            "---\nid: alpha\ntitle: Dup Alpha\ntags: [x]\nsource: p.1\n---\n다른 본문.\n",
+            encoding="utf-8")
+        try:
+            query(str(ws), "아무 질문", k=3)
+            failures.append("중복 id를 fail-closed하지 않음")
+        except SystemExit as e:
+            if "duplicate note id 'alpha'" not in str(e):
+                failures.append(f"중복 id 에러 메시지 이상: {e}")
 
     if failures:
         print("SELF-TEST FAIL:")

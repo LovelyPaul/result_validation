@@ -32,6 +32,7 @@ from pathlib import Path
 WIKI_REL = "20-knowledge-base/wiki"
 NOTES_REL = f"{WIKI_REL}/notes"
 MANIFEST_REL = f"{WIKI_REL}/promotion-manifest.jsonl"
+ALLOWED_SRC_DIRS = ("40-drafts", "80-reports")   # 승격 입력 허용 위치 (phase_contracts §9)
 
 REQUIRED_KEYS = ("id", "title", "created", "tags")   # A3 필수 frontmatter 키
 # B8 출처 인용 신호: source 프론트매터가 비어도 본문에 페이지/표/arXiv/DOI/URL 인용이 있으면 통과
@@ -157,6 +158,19 @@ def promote(workspace, src_file, apply=False):
         raise SystemExit(f"입력 파일 없음: {src}")
     text = src.read_text(encoding="utf-8")
     problems, fm = lint_note(text)
+
+    # 승격 입력 위치 게이트 (R1 major-1): src는 workspace 하위 + 첫 디렉터리가 40-drafts/80-reports.
+    # 이 검증이 없으면 workspace 밖 임의 markdown이 lint만 맞추면 --apply로 정본에 들어간다
+    # (reviewer-codex 2026-07-20 실재현) — "검증 통과 산출물만 승격" 계약을 코드로 강제.
+    try:
+        rel = src.resolve().relative_to(ws.resolve())
+        first_dir = rel.parts[0] if len(rel.parts) > 1 else ""
+    except ValueError:
+        rel, first_dir = None, None
+    if rel is None or first_dir not in ALLOWED_SRC_DIRS:
+        problems.append(
+            f"승격 입력 위치 위반 — src는 workspace의 {'/'.join(ALLOWED_SRC_DIRS)} 아래 파일만 허용"
+            f"(검증 라운드를 거친 산출물만 승격, phase_contracts §9): {src}")
     nid = _target_id(text, src)
     notes_dir = ws / NOTES_REL
     dest = notes_dir / f"{nid}.md"
@@ -278,6 +292,27 @@ def _self_test():
         r4 = promote(str(ws), str(src4), apply=True)
         if r4["action"] != "rejected" or not any("B4" in p for p in r4["problems"]):
             failures.append(f"B4 제목 중복 미탐지: {r4['action']} {r4['problems']}")
+
+        # R1 major-1: workspace 밖 src → apply=True여도 거부·정본 미생성 (외부 입력 승격 우회 봉쇄)
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as outside:
+            ext = Path(outside) / "valid-looking.md"
+            ext.write_text(_note("ext-note", "External Note", "완벽한 lint 통과 내용 (p.1)",
+                                 "- 2026-07-20 작성"), encoding="utf-8")
+            r_out = promote(str(ws), str(ext), apply=True)
+            if r_out["action"] != "rejected" or not any("위치 위반" in p for p in r_out["problems"]):
+                failures.append(f"outside-src 미거부: {r_out['action']} {r_out['problems']}")
+            if (ws / NOTES_REL / "ext-note.md").exists():
+                failures.append("outside-src가 정본에 쓰임 (위치 게이트 실패)")
+        # workspace 하위지만 허용 외 폴더(60-data 등)도 거부
+        other = ws / "60-data"
+        other.mkdir(exist_ok=True)
+        src_other = other / "sneak.md"
+        src_other.write_text(_note("sneak", "Sneak Note", "내용 (p.1)", "- 2026-07-20 작성"),
+                             encoding="utf-8")
+        r_sn = promote(str(ws), str(src_other), apply=True)
+        if r_sn["action"] != "rejected" or (ws / NOTES_REL / "sneak.md").exists():
+            failures.append(f"허용 외 폴더 src 미거부: {r_sn['action']}")
 
         # 출처 없는 산출물 거부(B8)
         src5 = drafts / "bad.md"

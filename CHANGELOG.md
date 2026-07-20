@@ -11,8 +11,10 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
     이 머신 python에서 실측(`CREATE VIRTUAL TABLE ... USING fts5`) — 가용하면 SQLite FTS5
     가상테이블(id/title/tags/body), 불가하면 순수 파이썬 문자 bigram BM25 단독 폴백. mode를
     manifest.json·stdout에 명시. (실측 환경: sqlite 3.50.4 → FTS5 가용.)
-  - `wiki_query.py` — 질문 → FTS5 매치 채널(`bm25()` 랭킹) + 문자 bigram BM25 랭킹 채널 유니온
-    top-k → `wiki/queries/`에 근거 발췌 리포트. 존재 노트만 위키링크(dangling 0 불변식).
+  - `wiki_query.py` — 질문 → FTS5 매치 채널(`bm25()` 랭킹) + 문자 bigram BM25 랭킹 채널을
+    **RRF(K=60)로 융합**한 top-k → `wiki/queries/`에 근거 발췌 리포트. 존재 노트만 위키링크
+    (dangling 0 불변식). (시계열: 기본 구현(8c4550c)은 단순 유니온이었고 같은 릴리스 증보
+    (80e6162)에서 RRF로 교체 — 최종 코드는 RRF. 아래 증보 절 참조.)
     **BM25 수식·전처리(K1=1.2·B=0.75·`_BM25_STRIP`·`_bigrams`·idf·score·(-score,id) 정렬)는
     tax-wiki 데모 `wiki/scripts/query.py`에서 그대로 이식** — ablation 검증 수식·임의 개선 금지.
   - `wiki_promote.py` — 검증 통과 산출물(40-drafts·80-reports)을 wiki 정본으로 승격하는 게이트.
@@ -47,6 +49,20 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   노이즈=토큰압축/KV-cache/멀티모달). **결정론 실증**: classify.py 실행 실측 — 관련 7/7 분류
   (재현율 100%)·무관 8편 오탐 0. RUNBOOK 환경 전제의 "코퍼스가 없으면" 경로를 이 샘플 복사
   실데이터 진행으로 갱신(낭독 모드는 보조).
+### Fixed (리뷰어 R1 — reviewer-codex 독립 검수 major 3·minor 1, master 전건 수용)
+- **(major) 승격 입력 위치 게이트**: `wiki_promote`가 src 위치를 검증하지 않아 workspace 밖
+  임의 markdown도 `--apply`로 정본에 들어가던 구멍(리뷰어 실재현) — src가 workspace 하위이고
+  첫 디렉터리가 `40-drafts`/`80-reports`일 때만 승격, 위반 시 rejected. outside-src·허용 외
+  폴더 self-test 2건 추가.
+- **(major) 샘플 코퍼스 verbatim 정합**: 2306.05685·2308.07201·2303.16634 세 편의 abstract가
+  arXiv abs 페이지의 "this https URL" 링크 텍스트 잔재로 export API 원문과 불일치 — API
+  summary 원문으로 교체(실 GitHub URL 복원). 교체 후 15편 전건 API 재대조: title·abstract
+  15/15 일치 실측.
+- **(major) 중복 노트 id fail-closed**: 색인/검색층이 duplicate frontmatter id를 조용히 1건으로
+  붕괴시키던 결함(리뷰어 실재현) — `wiki_index`·`wiki_query`의 load_notes가 중복 발견 시
+  SystemExit로 차단, id↔파일 stem 불일치는 감사 리포트(`audit.id_stem_mismatch`)에 포함.
+  dup-id 거부 self-test 2건 추가.
+- (minor) 이 CHANGELOG 상단 `wiki_query` 서술의 "유니온 top-k"를 RRF 융합으로 정정(시계열 명시).
 ### Design (로드맵 — 문서 기재만·v0.3.0 미구현)
 - vector 임베딩 채널·시맨틱 캐시·토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·
   엣지 confidence decay — stdlib 플러그인 범위 밖, RUNBOOK §3 "향후 확장"에 명시.
