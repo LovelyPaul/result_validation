@@ -21,7 +21,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-API = "http://export.arxiv.org/api/query"
+API = "https://export.arxiv.org/api/query"   # https 필수 (R1 [2] — 평문 http 금지)
 NS = {"a": "http://www.w3.org/2005/Atom"}
 CORPUS_REL = "60-data/corpus.json"
 
@@ -32,9 +32,19 @@ def norm(s):
 
 
 def parse_atom(xml_text):
-    """Atom XML → [{id, title, abstract, url}]. 결정론 파싱(zero-LLM)."""
+    """Atom XML → [{id, title, abstract, url}]. 결정론 파싱(zero-LLM).
+    malformed XML은 명시 SystemExit 진단(R1 [3]) — 조용한 빈 결과 금지. Atom 네임스페이스가
+    아닌 feed는 빈 결과 대신 stderr 경고를 남긴다."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        raise SystemExit(f"arXiv 응답 XML 파싱 실패(malformed): {e} — 응답 앞부분: {xml_text[:120]!r}")
+    entries = root.findall("a:entry", NS)
+    if not entries and not root.tag.startswith("{http://www.w3.org/2005/Atom}"):
+        print(f"경고: Atom 네임스페이스가 아닌 응답(root={root.tag}) — entry 0건. "
+              f"API 주소/응답 형식을 확인하라.", file=sys.stderr)
     out = []
-    for e in ET.fromstring(xml_text).findall("a:entry", NS):
+    for e in entries:
         raw_id = e.findtext("a:id", "", NS)          # http://arxiv.org/abs/<id>v<n>
         m = re.search(r"abs/([0-9]{4}\.[0-9]{4,5})", raw_id)
         if not m:
@@ -58,6 +68,18 @@ def fetch(ids=None, query=None, max_n=10):
     req = urllib.request.Request(url, headers={"User-Agent": "research-survey-corpus-fetch"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return parse_atom(r.read().decode("utf-8"))
+
+
+def check_corpus(obj, path):
+    """--append 대상 코퍼스 타입/스키마 검증 (R1 [4]) — 비list·비dict 원소·id 없는 항목은
+    명시 거부(SystemExit). 오염된 코퍼스에 조용히 병합하는 것을 금지한다."""
+    if not isinstance(obj, list):
+        raise SystemExit(f"코퍼스 스키마 위반: {path} 는 JSON 배열이어야 한다 (실제: {type(obj).__name__})")
+    for i, e in enumerate(obj):
+        if not isinstance(e, dict):
+            raise SystemExit(f"코퍼스 스키마 위반: {path} [{i}] 원소가 객체가 아니다 (실제: {type(e).__name__})")
+        if not e.get("id"):
+            raise SystemExit(f"코퍼스 스키마 위반: {path} [{i}] 항목에 id 가 없다 — 범용 스키마 필수키")
 
 
 def merge(existing, new):
@@ -106,6 +128,35 @@ def _self_test():
         failures.append(f"병합 기존 불변 위반: {merged}")
     if [a["id"] for a in added] != ["2303.08896"] or [s["id"] for s in skipped] != ["2512.17776"]:
         failures.append(f"병합 dedup 오류: added={added} skipped={skipped}")
+    # R1 [3]-a: malformed XML → 명시 SystemExit 진단
+    try:
+        parse_atom("this is not xml <<<")
+        failures.append("malformed XML을 조용히 통과시킴")
+    except SystemExit as e:
+        if "파싱 실패" not in str(e):
+            failures.append(f"malformed 진단 메시지 이상: {e}")
+    # R1 [3]-b: Atom 네임스페이스 아닌 feed → 빈 결과 + stderr 경고
+    import contextlib
+    import io
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        rows_nons = parse_atom("<feed><entry><id>http://arxiv.org/abs/2512.17776v1</id></entry></feed>")
+    if rows_nons != []:
+        failures.append(f"비Atom feed 결과 이상: {rows_nons}")
+    if "Atom 네임스페이스가 아닌" not in err.getvalue():
+        failures.append(f"비Atom feed 경고 미출력: {err.getvalue()!r}")
+    # R1 [4]: --append 코퍼스 스키마 검증 — 비list·비dict 원소·id 없는 항목 명시 거부
+    for bad, label in (({"not": "a list"}, "비list"),
+                       (["문자열원소"], "비dict 원소"),
+                       ([{"title": "id 없음"}], "id 없는 항목")):
+        try:
+            check_corpus(bad, "test-corpus.json")
+            failures.append(f"check_corpus가 {label}를 통과시킴")
+        except SystemExit as e:
+            if "스키마 위반" not in str(e):
+                failures.append(f"check_corpus 진단 메시지 이상({label}): {e}")
+    if check_corpus([{"id": "x", "title": "정상"}], "t.json") is not None:
+        failures.append("check_corpus가 정상 코퍼스에서 값을 반환")
     if failures:
         print("SELF-TEST FAIL:")
         for f in failures:
@@ -134,6 +185,7 @@ def main():
     out = Path(a.workspace) / CORPUS_REL
     if a.append and out.exists():
         existing = json.loads(out.read_text(encoding="utf-8"))
+        check_corpus(existing, str(out))   # 병합 전 스키마 검증 (R1 [4])
         merged, added, skipped = merge(existing, rows)
     else:
         merged, added, skipped = rows, rows, []

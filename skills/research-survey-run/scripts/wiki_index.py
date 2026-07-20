@@ -70,16 +70,26 @@ def fts5_available():
         return False
 
 
+REQUIRED_KEYS = ("id", "title", "created", "tags")   # A3 노트 스키마 필수 frontmatter 키
+
+
 def load_notes(notes_dir):
-    """notes/*.md → [{id, title, tags, body, sha, path}]. id는 frontmatter 우선, 없으면 stem.
-    노트 id 유일성은 wiki 기본 불변식 — 중복 id 발견 시 fail-closed(SystemExit). 조용히
-    dict 붕괴로 한 노트를 잃는 것을 금지한다 (R1 major-3, reviewer-codex 실재현)."""
+    """notes/*.md → ([{id, title, tags, body, sha, path}], skipped).
+    **스키마 fail-closed**: A3 필수키(id/title/created/tags)가 없는 .md는 노트로 취급하지 않고
+    skip 목록에 명시 기록한다 — 템플릿 README.md 등 비노트 파일이 색인에 혼입되는 것을 차단
+    (v0.4.0 R1 major-1, reviewer-codex 재현 시나리오). 노트 id 유일성은 wiki 기본 불변식 —
+    중복 id 발견 시 fail-closed(SystemExit). 조용한 dict 붕괴 금지 (v0.3.0 R1 major-3)."""
     out = []
+    skipped = []
     seen = {}
     for p in sorted(Path(notes_dir).glob("*.md")):
         text = p.read_text(encoding="utf-8")
         fm, body = parse_frontmatter(text)
-        nid = fm.get("id") or p.stem
+        missing = [k for k in REQUIRED_KEYS if not fm.get(k)]
+        if missing:
+            skipped.append({"path": str(p), "missing": missing})
+            continue
+        nid = fm["id"]
         if nid in seen:
             raise SystemExit(
                 f"duplicate note id '{nid}' — {seen[nid]} ↔ {p}. 노트 id는 유일해야 한다"
@@ -96,7 +106,7 @@ def load_notes(notes_dir):
             "sha": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "path": str(p),
         })
-    return out
+    return out, skipped
 
 
 def extract_edges(notes):
@@ -144,7 +154,7 @@ def build_index(workspace):
     if not notes_dir.exists():
         raise SystemExit(f"노트 폴더 없음: {notes_dir} — 먼저 노트를 두거나 워크스페이스 경로를 확인하세요.")
     index_dir.mkdir(parents=True, exist_ok=True)
-    notes = load_notes(notes_dir)
+    notes, skipped = load_notes(notes_dir)
     has_fts5 = fts5_available()
     mode = "fts5" if has_fts5 else "python-fallback"
     db_path = index_dir / "wiki.db"
@@ -209,6 +219,7 @@ def build_index(workspace):
         "fts5_available": has_fts5,
         "note_count": len(notes),
         "note_ids": [n["id"] for n in notes],
+        "skipped": skipped,
         "note_shas": cur_shas,
         "delta": delta,
         "edge_count": len(edges),
@@ -263,6 +274,16 @@ def _self_test():
         m3, _ = build_index(str(ws))
         if m3["delta"]["changed"] != ["beta"] or m3["delta"]["added"] or m3["delta"]["removed"]:
             failures.append(f"C4 변경 델타 오류: {m3['delta']}")
+        # v0.4.0 R1 major-1: 필수키 없는 .md(README 등)는 노트로 취급하지 않고 skip 명시
+        (notes / "README.md").write_text("# wiki notes 안내문 — frontmatter 없음\n", encoding="utf-8")
+        m_r, _ = build_index(str(ws))
+        if m_r["note_count"] != 3 or "README" in " ".join(m_r["note_ids"]):
+            failures.append(f"README 혼입 차단 실패: count={m_r['note_count']} ids={m_r['note_ids']}")
+        if not any(s["path"].endswith("README.md") and set(s["missing"]) == set(REQUIRED_KEYS)
+                   for s in m_r["skipped"]):
+            failures.append(f"skip 목록 기록 오류: {m_r['skipped']}")
+        (notes / "README.md").unlink()
+
         # R1 major-3: 중복 frontmatter id → fail-closed (조용한 붕괴 금지)
         (notes / "dup1.md").write_text(
             "---\nid: dup\ntitle: D1\ncreated: 2026-07-20\ntags: [x]\nsource: p.1\n---\n"
@@ -316,6 +337,9 @@ def main():
     m, index_dir = build_index(a.workspace)
     d = m["delta"]
     print(f"색인 완료: mode={m['mode']} · 노트 {m['note_count']}건 · 엣지 {m['edge_count']}건 · {index_dir}")
+    if m["skipped"]:
+        print(f"스키마 미충족 skip {len(m['skipped'])}건 (노트로 취급 안 함): "
+              f"{[(Path(s['path']).name, s['missing']) for s in m['skipped']]}")
     print(f"델타: +{len(d['added'])} ~{len(d['changed'])} -{len(d['removed'])}"
           + (" (변경 없음 — FTS5 재색인 생략)" if not any(d.values()) else ""))
     a_ = m["audit"]
