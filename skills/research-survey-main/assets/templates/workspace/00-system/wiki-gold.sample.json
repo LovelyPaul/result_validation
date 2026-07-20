@@ -1,0 +1,66 @@
+{
+  "_doc": "gold 질문셋 샘플 — 동봉 위키 노트 3개(deer-benchmark·selfcheckgpt·llm-as-a-judge) 기반 retrieval 채점용. 사용: 이 파일을 워크스페이스 00-system/wiki-gold.json으로 복사 후 wiki_grade.py --workspace . 실행. expected_evidence는 기대 1위 노트 본문에 글자 그대로 존재하는 근거 문구(gold 자체 무결성 검증 대상 — 미존재면 채점기가 fail-closed).",
+  "k": 5,
+  "questions": [
+    {
+      "question": "deep research 시스템이 만든 보고서를 평가하는 벤치마크는 무엇인가",
+      "expected_top1": "deer-benchmark",
+      "expected_evidence": "전문가급 보고서를 평가하는 벤치마크"
+    },
+    {
+      "question": "DEER는 평가 기준을 몇 개의 차원으로 체계화했나",
+      "expected_top1": "deer-benchmark",
+      "expected_evidence": "7 dimensions·25 subdimensions"
+    },
+    {
+      "question": "fine-grained rubric 항목은 몇 개로 운영화됐나",
+      "expected_top1": "deer-benchmark",
+      "expected_evidence": "101개 fine-grained rubric items"
+    },
+    {
+      "question": "cited와 uncited 주장을 모두 검증하는 아키텍처",
+      "expected_top1": "deer-benchmark",
+      "expected_evidence": "claim verification 아키텍처"
+    },
+    {
+      "question": "외부 데이터베이스 없이 블랙박스 모델 응답을 팩트체크하는 방법",
+      "expected_top1": "selfcheckgpt",
+      "expected_evidence": "샘플링 기반 기법"
+    },
+    {
+      "question": "할루시네이션이면 샘플된 응답들이 어떻게 되나",
+      "expected_top1": "selfcheckgpt",
+      "expected_evidence": "샘플들이 서로 갈라지고 모순"
+    },
+    {
+      "question": "WikiBio 인물 지문으로 사실성을 수동 주석한 검증 셋업",
+      "expected_top1": "selfcheckgpt",
+      "expected_evidence": "WikiBio 인물 지문을 생성"
+    },
+    {
+      "question": "문장 수준 할루시네이션 검출에서 grey-box 대비 성능 지표",
+      "expected_top1": "selfcheckgpt",
+      "expected_evidence": "AUC-PR"
+    },
+    {
+      "question": "LLM 심판에서 확인된 편향에는 어떤 것들이 있나",
+      "expected_top1": "llm-as-a-judge",
+      "expected_evidence": "position·verbosity·self-enhancement 편향"
+    },
+    {
+      "question": "MT-bench와 Chatbot Arena는 각각 무엇인가",
+      "expected_top1": "llm-as-a-judge",
+      "expected_evidence": "MT-bench(멀티턴 질문 세트)·Chatbot Arena(크라우드소스 배틀)"
+    },
+    {
+      "question": "GPT-4급 심판과 인간 선호는 얼마나 일치하나",
+      "expected_top1": "llm-as-a-judge",
+      "expected_evidence": "80% 이상 일치"
+    },
+    {
+      "question": "LLM-as-a-judge는 인간 선호의 무엇이라고 결론짓나",
+      "expected_top1": "llm-as-a-judge",
+      "expected_evidence": "확장 가능하고 설명 가능한 근사"
+    }
+  ]
+}

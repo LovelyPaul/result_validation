@@ -2,6 +2,68 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.5.0] - 2026-07-21
+
+### Added (비교 분석 P1 5건 — gbrain·knowledge-manager·wiki-demo 대조 격차 해소, 오너 승인)
+- **P1-1 retrieval·검수 평가 하네스 `wiki_grade.py`** (최대 격차 — wiki-demo의 gold+매설
+  패턴 이식): ①gold 질문셋(`00-system/wiki-gold.json` — 질문·기대 1위 노트 id·기대 근거
+  문구) 일괄 실행 → **1위 적중률·top-k recall** 산출. 랭킹은 `wiki_query.query()`를 그대로
+  호출(채점기≠검색기 이중 구현 금지). ②gold 무결성 fail-closed: 기대 근거 문구가 기대 노트
+  본문에 실재하는지 검사 — 위반 시 exit 1(채점 기준 오염 차단). ③오류 매설 노트
+  (`40-drafts/ev/*.md`)를 검수 게이트 체인(promote lint dry-run → source-coverage)에 넣어
+  **거부율** 산출 — dry-run만 사용(정본·manifest 무변조), 판정은 rejected/passed/unchecked
+  3어휘(원문 해결 불가는 unchecked 명시 — 조용한 통과 금지). source-coverage 층은
+  `verify_summaries`의 `resolve_source`·`check_evidence_grounding`을 재사용. ④JSON 리포트
+  (`70-analysis/wiki-grade-report.json`) + `--min-top1`/`--min-reject` 임계 게이트(미달 exit 1).
+  동봉 샘플: **gold 12문항**(근거 문구 전건 노트 원문 대조 실측) + **매설 5종**(발명 수치·
+  문구 오인용·출처 없음·Timeline 변조·필수키 누락 — 발명 수치 94.2와 오인용 문구가 실제
+  arXiv 초록에 부재함을 실측 확인). DEMO ⑦ 품질 채점(선택)·RUNBOOK 품질 채점 절·
+  data-dictionary 채점 데이터 스키마 문서화.
+- **P1-2 source-coverage 검수** (`verify_summaries.py --corpus [--source-dir]
+  [--coverage-threshold]`): ①Evidence 인용 실재 — Evidence 절의 수치(퍼센트·소수 —
+  정수는 오탐 커 보수적 제외)와 인용 문구(12자+)가 원문에 substring 실재하는지 grep 대조,
+  부재=FAIL(발명 수치·오인용 차단). 원문은 `--source-dir`의 PDF 추출 .txt 우선, 없으면
+  corpus abstract(+제목). **원문 미해결(arXiv id 표기 없음·corpus 미등재)=FAIL**(fail-closed —
+  조용한 검사 생략은 매설 우회 루프홀). ②키포인트 커버율 — 초록을 문장 단위 키포인트로
+  쪼개 내용어 40%+ 공유 시 커버, 커버율 < 임계(기본 0.6)면 WARN(exit 불반영 — 한글 완전
+  의역의 저평가 가능성은 결정론 근사 한계로 문서화). `--corpus` 미지정 시 기존 동작 그대로
+  (하위호환)·self-test 신설.
+- **P1-3 stale 감지 + 감사 정식화** (`wiki_index.py --audit`): frontmatter `updated`(없으면
+  `created`) 나이 **30일 초과 stale 목록**(날짜 파싱 불가는 fail-closed로 stale 포함·
+  age_days=None)·**건강도 1줄**(notes/edges/orphan/broken/stale/skipped — 일반 색인 실행에도
+  출력)·`--audit` 상세 리포트(stale·contrasts 쌍·confidence 선언). manifest에 audit.stale·
+  health 기록. RUNBOOK에 30일 주기 감사 운영 절차 절(후속 조치 포함).
+- **P1-4 타입드 엣지 + confidence 최소형**: `[[id|rel]]` 구문 파싱 — rel∈contrasts/supports/
+  extends는 관계 타입, 별칭·무파이프는 기본 `links` → `edges.json`에 rel 기록(dedup은
+  (src,dst,rel)). audit에 **contrasts 쌍 목록**(상충 연구 모순 가시화). 노트 frontmatter
+  `confidence` 선언(직접 인용 1.0/요약 추출 0.7)을 manifest `note_confidence`에 기록(float
+  불가 선언은 원문 보존 — 조용한 폐기 금지). **검색 랭킹 보정은 이번 범위 제외** — RUNBOOK
+  로드맵에 후보로만 명시.
+- **P1-5 arXiv 델타 지속 서베이** (`corpus_fetch.py --since YYYY-MM-DD`): 제출일(published)
+  필터 — `--query`/`--ids` 어느 쪽과도 조합, `--append` 병용 시 "지난 반입 이후 신규분만
+  병합"(델타 반입). 응답 rows에 `published` 키 추가(Atom published 파싱), published 결측·
+  불량 항목은 **fail-closed 제외+경고**, `--query`+`--since`는 submittedDate 최신순 정렬
+  요청(--max 창이 신규분을 향하게), `--since` 형식 오류는 명시 SystemExit. RUNBOOK §2.5에
+  지속 서베이 절 신설 — phase_contracts §11(지속 서베이)의 실행화.
+
+### Fixed (이월 minor 2건)
+- `corpus_fetch` 연결층 오류 명시 진단: URLError(오프라인·DNS·연결 거부)·TimeoutError(60s)를
+  raw traceback 대신 SystemExit 진단으로 교체(HTTPError 백오프 경로와 분리) + 모의 opener
+  self-test.
+- DEMO frontmatter version 0.5.0 동기화(0.4.0에 머물러 있던 것).
+
+### Verified
+- self-test 6종 전건 PASS·exit 0: wiki_index(fts5_available=True)·wiki_query·wiki_promote·
+  corpus_fetch·verify_summaries(신설)·wiki_grade(신설).
+- grade E2E(격리 워크스페이스·동봉 샘플): **retrieval 1위 적중 12/12(100%)·top-5 recall
+  100%·gold 무결성 위반 0 / 매설 거부 5/5(100%)** — promote 층 3건(출처 없음 B8·Timeline
+  변조 E1·필수키 누락 A3) + source-coverage 층 2건(발명 수치 '94.2' 원문 부재·오인용 문구
+  원문 부재). `--min-top1 0.9 --min-reject 0.9` 게이트 exit 0.
+- 데모 코어 E2E 실완주: classify 7편(오탐 0) → query 1위 deer-benchmark → 타입드 엣지 포함
+  노트 승격(dry-run diff → apply → manifest 기록) → 델타 재색인(+1·supports 엣지 rel 기록·
+  confidence 0.7 note_confidence 기록·건강도 1줄) → 재검색 1위 = 방금 승격 노트.
+- `claude plugin validate` exit 0.
+
 ## [0.4.1] - 2026-07-21
 ### Fixed (필드 테스트 F2~F7 — v0.4.0 발행본 신규 사용자 시나리오 실측 후속)
 - **(F2) `corpus_fetch` HTTP 오류 처리**: HTTPError가 raw traceback으로 노출되던 것을 명시

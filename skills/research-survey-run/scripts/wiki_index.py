@@ -10,6 +10,12 @@ LLM-wiki 운영 규칙(gbrain·knowledge-manager 증류 — LLM_WIKI_RULES_DISTI
   - B6 zero-LLM 링크 추출: 매 색인마다 정규식으로 [[..]] 위키링크를 엣지 테이블로 추출
     (LLM 0토큰 — E3 메타연산 결정론). 엣지에 src·dst·exists·extracted_at 기록(B8 이력).
   - D2 감사 체크: orphan(들어오고 나가는 링크 0)·broken link(대상 노트 부재)를 리포트.
+    v0.5.0 확장 — stale(updated 없으면 created 나이 30일 초과·날짜 파싱 불가는 fail-closed
+    포함)·건강도 요약 1줄(notes/edges/orphan/broken/stale/skipped)·`--audit` 상세 리포트.
+  - 타입드 엣지(P1-4): [[id|rel]]의 rel∈contrasts/supports/extends 는 관계 타입으로,
+    별칭·무파이프는 기본 'links'로 edges.json에 기록. contrasts 쌍은 감사에 목록화.
+    노트 frontmatter의 confidence 선언(직접인용 1.0/요약 0.7)은 manifest note_confidence에
+    기록(랭킹 보정은 범위 외).
   - C4 델타 색인: manifest의 노트 sha256과 대조해 변경분(추가/수정/삭제)만 FTS5 행 갱신.
     변경 0이면 재색인 생략.
 
@@ -34,7 +40,10 @@ INDEX_REL = f"{WIKI_REL}/.index"
 
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.S)
 _KV_RE = re.compile(r"([A-Za-z_][\w-]*):\s*(.*)$")
-_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")   # [[id]]·[[id|별칭]]·[[id#헤딩]]
+# [[id]]·[[id|별칭 또는 rel]]·[[id#헤딩]] — 파이프부는 그룹 2로 캡처(P1-4 타입드 엣지)
+_WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:\|([^\]#]*))?(?:#[^\]]*)?\]\]")
+REL_TYPES = ("contrasts", "supports", "extends")   # [[id|rel]] 타입드 엣지 어휘 — 그 외 파이프=별칭(links)
+STALE_DAYS = 30   # D2 stale 판정 — updated(없으면 created) 나이 초과 일수
 
 
 def parse_frontmatter(text):
@@ -103,6 +112,9 @@ def load_notes(notes_dir):
             "title": fm.get("title") or p.stem,
             "tags": tags,
             "source": fm.get("source", ""),
+            "created": fm.get("created", ""),
+            "updated": fm.get("updated", ""),      # 선택 키 — stale 판정에 created보다 우선
+            "confidence": fm.get("confidence", ""),  # 선택 키 — 직접인용 1.0 / 요약 0.7 선언
             "body": body.strip(),
             "sha": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "path": str(p),
@@ -112,30 +124,55 @@ def load_notes(notes_dir):
 
 def extract_edges(notes):
     """B6 zero-LLM 링크 추출 — 본문 [[..]] → 엣지 목록(결정 정렬·dedup).
-    각 엣지: src·dst·exists(대상 노트 실존)·extracted_at (B8 이력)."""
+    각 엣지: src·dst·rel·exists(대상 노트 실존)·extracted_at (B8 이력).
+    P1-4 타입드 엣지: [[id|rel]]의 rel∈REL_TYPES 면 그 타입, 파이프 미지정·별칭이면
+    기본 'links'. dedup은 (src,dst,rel) — 같은 쌍이라도 관계가 다르면 별개 엣지."""
     ids = {n["id"] for n in notes}
     today = str(date.today())
     edges = []
     seen = set()
     for n in notes:
-        for dst in _WIKILINK_RE.findall(n["body"]):
-            dst = dst.strip()
-            key = (n["id"], dst)
+        for m in _WIKILINK_RE.finditer(n["body"]):
+            dst = m.group(1).strip()
+            pipe = (m.group(2) or "").strip()
+            rel = pipe if pipe in REL_TYPES else "links"
+            key = (n["id"], dst, rel)
             if not dst or key in seen:
                 continue
             seen.add(key)
-            edges.append({"src": n["id"], "dst": dst, "exists": dst in ids, "extracted_at": today})
-    return sorted(edges, key=lambda e: (e["src"], e["dst"]))
+            edges.append({"src": n["id"], "dst": dst, "rel": rel,
+                          "exists": dst in ids, "extracted_at": today})
+    return sorted(edges, key=lambda e: (e["src"], e["dst"], e["rel"]))
 
 
-def audit(notes, edges):
-    """D2 감사 — orphan(in=out=0)·broken link(dst 부재) 결정론 리포트."""
+def _stale_notes(notes, today, stale_days):
+    """P1-3 stale 감지 — updated(없으면 created) 나이 > stale_days 노트 목록.
+    날짜 파싱 불가(형식 오류)는 신선도를 증명할 수 없으므로 **fail-closed로 stale에 포함**
+    (age_days=None·조용한 생략 금지). 각 항목: {id, date, age_days}."""
+    stale = []
+    for n in notes:
+        raw = n.get("updated") or n.get("created") or ""
+        try:
+            age = (today - date.fromisoformat(raw)).days
+        except ValueError:
+            stale.append({"id": n["id"], "date": raw, "age_days": None})
+            continue
+        if age > stale_days:
+            stale.append({"id": n["id"], "date": raw, "age_days": age})
+    return sorted(stale, key=lambda s: s["id"])
+
+
+def audit(notes, edges, today=None, stale_days=STALE_DAYS):
+    """D2 감사 — orphan(in=out=0)·broken link(dst 부재)·stale(P1-3)·contrasts 쌍(P1-4)
+    결정론 리포트. today는 자체검사 주입용(기본 오늘)."""
     ids = {n["id"] for n in notes}
     has_out = {e["src"] for e in edges}
     has_in = {e["dst"] for e in edges if e["exists"]}
     orphans = sorted(ids - has_out - has_in)
     broken = [{"src": e["src"], "dst": e["dst"]} for e in edges if not e["exists"]]
-    return {"orphans": orphans, "broken_links": broken}
+    contrasts = [{"src": e["src"], "dst": e["dst"]} for e in edges if e["rel"] == "contrasts"]
+    stale = _stale_notes(notes, today or date.today(), stale_days)
+    return {"orphans": orphans, "broken_links": broken, "contrasts": contrasts, "stale": stale}
 
 
 def _load_prev_manifest(index_dir):
@@ -148,7 +185,7 @@ def _load_prev_manifest(index_dir):
         return None
 
 
-def build_index(workspace):
+def build_index(workspace, today=None):
     ws = Path(workspace)
     notes_dir = ws / NOTES_REL
     index_dir = ws / INDEX_REL
@@ -207,13 +244,33 @@ def build_index(workspace):
 
     # B6 엣지 + D2 감사 (매 색인마다 — zero-LLM 결정론)
     edges = extract_edges(notes)
-    audit_result = audit(notes, edges)
+    audit_result = audit(notes, edges, today=today)
     # id↔파일 stem 불일치도 감사에 포함 (R1 major-3 — 위키링크 [[id]]와 파일명이 어긋나면 추적 혼선)
     audit_result["id_stem_mismatch"] = [
         {"id": n["id"], "stem": Path(n["path"]).stem} for n in notes
         if Path(n["path"]).stem != n["id"]]
     (index_dir / "edges.json").write_text(
         json.dumps(edges, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # P1-4 confidence: 노트 frontmatter 선언(직접인용 1.0/요약 0.7)을 노트 메타로 기록.
+    # float 불가 선언은 원문 그대로 보존(조용한 폐기 금지 — 감사에서 눈에 띄게).
+    note_confidence = {}
+    for n in notes:
+        if n["confidence"]:
+            try:
+                note_confidence[n["id"]] = float(n["confidence"])
+            except ValueError:
+                note_confidence[n["id"]] = n["confidence"]
+
+    # P1-3 건강도 요약 — 한 줄 카운트 (notes/edges/orphan/broken/stale/skipped)
+    health = {
+        "notes": len(notes),
+        "edges": len(edges),
+        "orphans": len(audit_result["orphans"]),
+        "broken": len(audit_result["broken_links"]),
+        "stale": len(audit_result["stale"]),
+        "skipped": len(skipped),
+    }
 
     manifest = {
         "mode": mode,
@@ -222,9 +279,11 @@ def build_index(workspace):
         "note_ids": [n["id"] for n in notes],
         "skipped": skipped,
         "note_shas": cur_shas,
+        "note_confidence": note_confidence,
         "delta": delta,
         "edge_count": len(edges),
         "audit": audit_result,
+        "health": health,
         "db": "wiki.db" if has_fts5 else None,
     }
     (index_dir / "manifest.json").write_text(
@@ -319,6 +378,61 @@ def _self_test():
             if not hit or hit[0][0] != "beta":
                 failures.append(f"델타 후 FTS5 검색 오류: {hit}")
 
+    # ── P1-3(stale)·P1-4(타입드 엣지·confidence) — 날짜 fixture 격리 tempdir ──
+    with tempfile.TemporaryDirectory() as d:
+        ws = Path(d)
+        notes = ws / NOTES_REL
+        notes.mkdir(parents=True)
+        (notes / "old.md").write_text(
+            "---\nid: old\ntitle: Old\ncreated: 2026-01-01\ntags: [x]\nconfidence: 1.0\n---\n"
+            "[[fresh|supports]] · [[rival|contrasts]] · [[fresh|Some Alias]] · [[base|extends]] 참조.\n",
+            encoding="utf-8")
+        (notes / "fresh.md").write_text(
+            "---\nid: fresh\ntitle: Fresh\ncreated: 2026-01-02\nupdated: 2026-07-15\n"
+            "tags: [x]\nconfidence: 0.7\n---\n[[old]] 역참조.\n", encoding="utf-8")
+        (notes / "rival.md").write_text(
+            "---\nid: rival\ntitle: Rival\ncreated: 2026-07-10\ntags: [x]\n---\n내용.\n",
+            encoding="utf-8")
+        (notes / "badate.md").write_text(
+            "---\nid: badate\ntitle: BadDate\ncreated: 언젠가\ntags: [x]\n---\n내용.\n",
+            encoding="utf-8")
+        fixed_today = date(2026, 7, 21)
+        mt, idx = build_index(str(ws), today=fixed_today)
+
+        # P1-4: [[id|rel]] 파싱 — rel 어휘는 타입, 별칭·무파이프는 기본 links
+        edges = json.loads((idx / "edges.json").read_text(encoding="utf-8"))
+        rels = {(e["src"], e["dst"], e["rel"]) for e in edges}
+        expect = {("old", "fresh", "supports"), ("old", "rival", "contrasts"),
+                  ("old", "fresh", "links"), ("old", "base", "extends"), ("fresh", "old", "links")}
+        if rels != expect:
+            failures.append(f"P1-4 rel 파싱 오류: {rels} ≠ {expect}")
+        if any("rel" not in e for e in edges):
+            failures.append("P1-4 edges.json에 rel 누락")
+        # P1-4: audit contrasts 쌍 목록
+        if mt["audit"]["contrasts"] != [{"src": "old", "dst": "rival"}]:
+            failures.append(f"P1-4 contrasts 쌍 오류: {mt['audit']['contrasts']}")
+        # P1-4: frontmatter confidence → 노트 메타(manifest) 기록 (float 변환·미선언 제외)
+        if mt["note_confidence"] != {"old": 1.0, "fresh": 0.7}:
+            failures.append(f"P1-4 confidence 기록 오류: {mt['note_confidence']}")
+
+        # P1-3: stale — updated(없으면 created) 나이 30일 초과 + 파싱 불가 fail-closed
+        stale_by_id = {s["id"]: s for s in mt["audit"]["stale"]}
+        if set(stale_by_id) != {"old", "badate"}:
+            failures.append(f"P1-3 stale 목록 오류: {sorted(stale_by_id)} (기대 old·badate)")
+        if not (isinstance(stale_by_id.get("old", {}).get("age_days"), int)
+                and stale_by_id["old"]["age_days"] > STALE_DAYS):
+            failures.append(f"P1-3 stale age 오류: {stale_by_id.get('old')}")
+        if stale_by_id.get("badate", {}).get("age_days") is not None:
+            failures.append(f"P1-3 날짜 파싱 불가 fail-closed 오류: {stale_by_id.get('badate')}")
+        # P1-3: updated가 created보다 우선 — fresh(created 오래·updated 최근)는 stale 아님
+        if "fresh" in stale_by_id:
+            failures.append("P1-3 updated 우선 위반: fresh가 stale로 판정됨")
+        # P1-3: 건강도 요약 카운트
+        h = mt["health"]
+        expect_h = {"notes": 4, "edges": 5, "orphans": 1, "broken": 1, "stale": 2, "skipped": 0}
+        if h != expect_h:
+            failures.append(f"P1-3 건강도 카운트 오류: {h} ≠ {expect_h}")
+
     if failures:
         print("SELF-TEST FAIL:")
         for f in failures:
@@ -331,6 +445,8 @@ def _self_test():
 def main():
     ap = argparse.ArgumentParser(description="wiki 노트 검색 색인+링크 그래프 빌드 (FTS5 또는 python 폴백)")
     ap.add_argument("--workspace", default=".", help="워크스페이스 루트 (기본: 현재 폴더)")
+    ap.add_argument("--audit", action="store_true",
+                    help="감사 상세 리포트 — stale 목록·contrasts 쌍·confidence 포함 (색인은 델타로 수행)")
     ap.add_argument("--self-test", action="store_true", help="외부 의존 없는 자체 검사")
     a = ap.parse_args()
     if a.self_test:
@@ -352,6 +468,24 @@ def main():
     if a_.get("id_stem_mismatch"):
         print(f"감사(D2): id↔stem 불일치 {len(a_['id_stem_mismatch'])}건 "
               f"{[(x['id'], x['stem']) for x in a_['id_stem_mismatch']]}")
+    h = m["health"]
+    print(f"건강도: notes {h['notes']} · edges {h['edges']} · orphan {h['orphans']} · "
+          f"broken {h['broken']} · stale {h['stale']} · skipped {h['skipped']}")
+    if a.audit:
+        if a_["stale"]:
+            print(f"감사(D2) stale({STALE_DAYS}일 초과) {len(a_['stale'])}건:")
+            for s in a_["stale"]:
+                age = f"{s['age_days']}일" if s["age_days"] is not None else "날짜 파싱 불가"
+                print(f"  - {s['id']}  ({s['date'] or '날짜 없음'} · {age})")
+        else:
+            print(f"감사(D2) stale({STALE_DAYS}일 초과): 0건")
+        if a_["contrasts"]:
+            print(f"감사(D2) contrasts 쌍 {len(a_['contrasts'])}건: "
+                  f"{[(c['src'], c['dst']) for c in a_['contrasts']]}")
+        else:
+            print("감사(D2) contrasts 쌍: 0건")
+        if m["note_confidence"]:
+            print(f"confidence 선언 {len(m['note_confidence'])}건: {m['note_confidence']}")
     if m["mode"] == "python-fallback":
         print("  (FTS5 미가용 — wiki_query가 순수 파이썬 bigram BM25로 랭킹합니다.)")
 

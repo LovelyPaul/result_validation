@@ -8,6 +8,13 @@ id/title/abstract/url)으로 만든다. `--append`는 기존 코퍼스에 병합
 사용:
   python3 corpus_fetch.py --workspace . --ids 2512.17776,2303.08896
   python3 corpus_fetch.py --workspace . --query "hallucination detection LLM" --max 10 --append
+  python3 corpus_fetch.py --workspace . --query "..." --since 2026-06-01 --append   # 델타 반입
+
+`--since YYYY-MM-DD`는 제출일(published) 필터 — 그 날짜 이후 제출분만 반입한다.
+--query/--ids 어느 쪽과도 조합되고 --append와 병용하면 "지난 반입 이후 신규분만 병합"이
+된다. 필터는 클라이언트측 결정론(응답의 published 대조 — published 없는 항목은 fail-closed
+제외·경고). --query+--since 조합은 최신순 정렬(sortBy=submittedDate)로 요청해 --max 창이
+최신분을 향하게 한다.
 
 의존: python3 표준 라이브러리만. 자체 검사: `--self-test` (네트워크 0 — 파싱·병합 로직만
 fixture로 검증).
@@ -21,6 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 
 API = "https://export.arxiv.org/api/query"   # https 필수 (R1 [2] — 평문 http 금지)
@@ -57,8 +65,36 @@ def parse_atom(xml_text):
             "title": norm(e.findtext("a:title", "", NS)),
             "abstract": norm(e.findtext("a:summary", "", NS)),
             "url": f"https://arxiv.org/abs/{aid}",
+            # published = v1 제출 시각 — --since 델타 필터 기준 (날짜 부분만)
+            "published": norm(e.findtext("a:published", "", NS))[:10],
         })
     return out
+
+
+def parse_since(s):
+    """--since 값 검증 → datetime.date. 형식 오류는 명시 SystemExit (조용한 오파싱 금지)."""
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        raise SystemExit(f"--since 형식 오류: {s!r} — YYYY-MM-DD 형식이어야 한다 (예: 2026-06-01)")
+
+
+def filter_since(rows, since):
+    """제출일(published) >= since 만 유지. published가 없거나 파싱 불가한 항목은
+    **fail-closed 제외**(신선도 미확인분을 델타로 조용히 통과시키지 않는다) + stderr 경고.
+    반환: (kept, dropped_old, dropped_undated)."""
+    kept, old, undated = [], [], []
+    for r in rows:
+        try:
+            pub = date.fromisoformat(r.get("published") or "")
+        except ValueError:
+            undated.append(r)
+            continue
+        (kept if pub >= since else old).append(r)
+    if undated:
+        print(f"경고: published 없는/불량 항목 {len(undated)}건을 --since 필터에서 제외했다"
+              f"(fail-closed): {[r.get('id') for r in undated]}", file=sys.stderr)
+    return kept, old, undated
 
 
 RETRY_CODES = (429, 503)   # 일시 rate-limit — 1회 백오프 재시도 대상 (v0.4.1 F2 — 필드 실측)
@@ -74,7 +110,8 @@ def _default_opener(url):
 def _request(url, retry_wait=RETRY_WAIT, opener=_default_opener):
     """HTTP GET + F2 오류 처리(필드 테스트 실측 반영): raw traceback 대신 명시 진단.
     429/503(일시 rate-limit)은 retry_wait초 백오프 후 **1회** 재시도, 그래도 실패하면
-    SystemExit. 그 외 코드는 즉시 SystemExit 진단."""
+    SystemExit. 그 외 코드는 즉시 SystemExit 진단. 연결층 오류(URLError — 오프라인·DNS·
+    연결 거부)와 타임아웃도 raw traceback 대신 명시 진단(SystemExit)."""
     try:
         return opener(url)
     except urllib.error.HTTPError as e:
@@ -89,13 +126,24 @@ def _request(url, retry_wait=RETRY_WAIT, opener=_default_opener):
                                  f"몇 분 뒤 다시 시도하라. (URL: {url})")
         raise SystemExit(f"arXiv API 요청 실패: HTTP {e.code} {e.reason} — ID/검색어와 네트워크를 "
                          f"확인하라. (URL: {url})")
+    except urllib.error.URLError as e:
+        # HTTPError가 URLError의 하위클래스이므로 이 분기는 연결층 오류만 받는다
+        raise SystemExit(f"arXiv API 연결 실패(오프라인·DNS·연결거부): {e.reason} — "
+                         f"네트워크 연결과 프록시 설정을 확인하라. (URL: {url})")
+    except TimeoutError:
+        raise SystemExit(f"arXiv API 응답 타임아웃(60s) — 네트워크가 느리거나 서버가 무응답이다. "
+                         f"잠시 뒤 다시 시도하라. (URL: {url})")
 
 
-def fetch(ids=None, query=None, max_n=10):
+def fetch(ids=None, query=None, max_n=10, since=None):
     if ids:
         params = {"id_list": ",".join(ids), "max_results": str(len(ids))}
     else:
         params = {"search_query": f"all:{query}", "max_results": str(max_n)}
+        if since:
+            # 델타 모드: 최신순 정렬로 --max 창이 since 이후 신규분을 향하게 한다
+            params["sortBy"] = "submittedDate"
+            params["sortOrder"] = "descending"
     url = API + "?" + urllib.parse.urlencode(params)
     return parse_atom(_request(url))
 
@@ -154,11 +202,13 @@ _FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
  Evaluating Deep Research Agents</title>
     <summary>  Line one
 of the abstract.  </summary>
+    <published>2025-12-19T18:59:59Z</published>
   </entry>
   <entry>
     <id>http://arxiv.org/abs/2303.08896v3</id>
     <title>SelfCheckGPT</title>
     <summary>Second abstract.</summary>
+    <published>2023-03-15T17:00:00Z</published>
   </entry>
 </feed>"""
 
@@ -175,6 +225,38 @@ def _self_test():
         failures.append(f"abstract 정규화 오류: {rows[0]['abstract']!r}")
     if rows[0]["url"] != "https://arxiv.org/abs/2512.17776":
         failures.append(f"url 오류: {rows[0]['url']}")
+    if rows[0]["published"] != "2025-12-19" or rows[1]["published"] != "2023-03-15":
+        failures.append(f"published 파싱 오류: {[r['published'] for r in rows]}")
+    # P1-5: --since 델타 필터 (네트워크 0 — fixture 날짜만)
+    kept, old, undated = filter_since(rows, parse_since("2024-01-01"))
+    if [r["id"] for r in kept] != ["2512.17776"] or [r["id"] for r in old] != ["2303.08896"]:
+        failures.append(f"--since 필터 오류: kept={[r['id'] for r in kept]} old={[r['id'] for r in old]}")
+    kept_all, _, _ = filter_since(rows, parse_since("2023-01-01"))
+    if len(kept_all) != 2:
+        failures.append(f"--since 전건 유지 오류: {len(kept_all)}")
+    # 경계값: since == published 당일은 포함(>=)
+    kept_eq, _, _ = filter_since(rows, parse_since("2025-12-19"))
+    if [r["id"] for r in kept_eq] != ["2512.17776"]:
+        failures.append(f"--since 당일 포함(>=) 오류: {[r['id'] for r in kept_eq]}")
+    # published 없는 항목 → fail-closed 제외 + 경고
+    import contextlib as _ctx
+    import io as _io
+    err_s = _io.StringIO()
+    with _ctx.redirect_stderr(err_s):
+        kept_u, _, undated_u = filter_since(
+            rows + [{"id": "no-date", "title": "t", "abstract": "a", "url": "u"}],
+            parse_since("2020-01-01"))
+    if [r["id"] for r in undated_u] != ["no-date"] or len(kept_u) != 2:
+        failures.append(f"published 결측 fail-closed 오류: kept={len(kept_u)} undated={undated_u}")
+    if "published 없는" not in err_s.getvalue():
+        failures.append(f"published 결측 경고 미출력: {err_s.getvalue()!r}")
+    # --since 형식 오류 → 명시 SystemExit
+    try:
+        parse_since("2026/06/01")
+        failures.append("--since 형식 오류를 통과시킴")
+    except SystemExit as e:
+        if "형식 오류" not in str(e):
+            failures.append(f"--since 형식 진단 이상: {e}")
     # 병합: 중복 id 스킵·기존 불변·신규 추가
     existing = [{"id": "2512.17776", "title": "OLD", "abstract": "keep", "url": "u"}]
     merged, added, skipped = merge(existing, rows)
@@ -248,6 +330,15 @@ def _self_test():
     except SystemExit as e:
         if "HTTP 404" not in str(e):
             failures.append(f"F2 404 진단 이상: {e}")
+    # 이월 minor: URLError(오프라인·DNS·타임아웃) → raw traceback 대신 명시 진단
+    def _offline(url):
+        raise urllib.error.URLError(OSError("getaddrinfo failed"))
+    try:
+        _request("http://t", retry_wait=0, opener=_offline)
+        failures.append("URLError를 통과시킴")
+    except SystemExit as e:
+        if "연결 실패" not in str(e) or "오프라인" not in str(e):
+            failures.append(f"URLError 진단 이상: {e}")
     # R2 [5]: fetch 결과 0건 → 파일 미작성·기존 보존·명시 경고
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -278,15 +369,21 @@ def main():
     ap.add_argument("--query", help="arXiv 검색어 (all: 필드)")
     ap.add_argument("--max", type=int, default=10, help="--query 시 최대 편수 (기본 10)")
     ap.add_argument("--append", action="store_true", help="기존 corpus.json에 병합(중복 id 스킵)")
+    ap.add_argument("--since", help="제출일(published) 델타 필터 — YYYY-MM-DD 이후 제출분만 반입")
     ap.add_argument("--self-test", action="store_true", help="네트워크 없는 자체 검사")
     a = ap.parse_args()
     if a.self_test:
         sys.exit(_self_test())
     if not a.ids and not a.query:
         ap.error("--ids 또는 --query 필요 (또는 --self-test)")
+    since = parse_since(a.since) if a.since else None   # 형식 검증은 fetch 전에 (요청 낭비 방지)
 
     rows = fetch(ids=[i.strip() for i in a.ids.split(",")] if a.ids else None,
-                 query=a.query, max_n=a.max)
+                 query=a.query, max_n=a.max, since=since)
+    if since:
+        rows, old, undated = filter_since(rows, since)
+        print(f"델타 필터(--since {a.since}): 유지 {len(rows)}편 · 이전 제출 제외 {len(old)}편"
+              + (f" · published 결측 제외 {len(undated)}편" if undated else ""))
     out = Path(a.workspace) / CORPUS_REL
     merged, added, skipped = save(rows, out, a.append)
     print(f"반입 완료: 신규 {len(added)}편 · 중복 스킵 {len(skipped)}편 · 총 {len(merged)}편 → {out}")

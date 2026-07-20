@@ -1,6 +1,6 @@
 ---
 title: research-survey RUNBOOK (정본 대본)
-version: 0.4.1
+version: 0.5.0
 duration: 15-20분 (코어) + 확장
 role: 진행자(에이전트)가 이 대본을 읽고 라이브로 튜토리얼을 진행한다
 ---
@@ -218,6 +218,25 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
      추가·조정하면 **기존 카테고리 편수도 함께 변할 수 있다**(정상 동작·필드 실측: 신규 반입
      논문이 기존 평가 카테고리에도 매칭돼 7→9편).
 
+### 지속 서베이 — 같은 다이얼로 델타 반입 (phase_contracts §11의 실행화)
+
+한 번 세팅한 서베이를 "그날 이후의 신착"으로 이어가는 절차. 다이얼은 그대로 두고
+**제출일 필터 + 병합 반입**만 반복한다:
+
+```bash
+# 마지막 반입일 이후 제출분만 같은 검색어로 가져와 기존 코퍼스에 병합(중복 id 자동 스킵)
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/corpus_fetch.py" --workspace . \
+  --query "hallucination detection LLM" --max 20 --since 2026-07-01 --append
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/classify.py" --workspace .
+```
+
+- `--since YYYY-MM-DD`는 arXiv 제출일 기준 필터 — `--query`·`--ids` 어느 쪽과도 조합된다.
+- 루프는 이 두 줄이 전부다: **델타 반입(--since+--append) → 재추출(classify)** → 새로 걸린
+  논문만 §1 코어의 요약→3중 검증→승격으로 흘려보낸다(기존 정본은 그대로 축적).
+- 반입 주기는 다이얼 주제의 신착 속도에 맞춘다(예: 주 1회). 반입일을 기록해 두고 다음
+  `--since`에 쓴다 — phase_contracts §11(지속 서베이: 신착을 같은 다이얼로 매칭 → 델타
+  적재(dedup))이 계약이 아니라 이 명령 두 줄로 실행된다.
+
 ## §3 — 확장 모듈 (시간 남으면)
 - **toy 데모(`/research-survey demo`)**: 설치 직후 5~10분 자동 체험 — 정본 `DEMO.md`
   (샘플 코퍼스 추출→위키 검색→검수 거부 2종→정상 승격).
@@ -237,8 +256,33 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
     - 노트는 Compiled Truth(현재값·REWRITE)+Timeline(append-only) 2분할 — 스키마는
       워크스페이스 `00-system/data-dictionary.md`.
   - **향후 확장(로드맵 — v0.3.0 미구현·stdlib 범위 밖)**: vector 임베딩 채널·시맨틱 캐시·
-    토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·엣지 confidence decay.
-- **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름).
+    토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·엣지 confidence decay·
+    confidence 기반 검색 랭킹 보정(승격 confidence 기록은 v0.5.0 구현 — 랭킹 반영은 후보).
+- **품질 채점(`wiki_grade`)**: "검색·검수가 잘 되는가"를 수치로 채점하는 평가 하네스
+  (wiki-demo의 gold+매설 패턴 이식). gold 질문셋(`00-system/wiki-gold.json` — 질문·기대
+  1위 노트 id·기대 근거 문구)을 일괄 실행해 **1위 적중률·top-k recall**을 산출하고, 오류
+  매설 노트(`40-drafts/ev/` — 발명 수치·문구 오인용·출처 없음·Timeline 변조·필수키 누락
+  5유형)를 승격 게이트 체인(promote lint → source-coverage)에 넣어 **거부율**을 산출한다.
+  gold의 기대 근거 문구가 노트 본문에 실재하는지도 함께 검사(fail-closed — 채점 기준 자체의
+  오염 차단). 리포트는 `70-analysis/wiki-grade-report.json`. 진행 절차는 DEMO ⑦ 참조.
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/wiki_grade.py" --workspace . \
+    [--min-top1 0.8 --min-reject 0.8]   # 임계 지정 시 미달이면 exit 1 (게이트로 사용)
+  ```
+- **정기 감사 운영(30일 주기 — D1 정식화)**: 위키는 쌓기만 하면 낡는다. **30일마다(또는
+  대량 승격 직후)** 감사를 돌려 건강도를 확인하는 것을 운영 절차로 삼는다:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/wiki_index.py" --workspace . --audit
+  ```
+  - 리포트 항목: **orphan**(연결 0 노트)·**broken link**(대상 부재 위키링크)·**stale**
+    (frontmatter `updated`(없으면 `created`) 나이 30일 초과 — 날짜 파싱 불가는 fail-closed로
+    stale 포함)·**contrasts 쌍**(모순 관계 가시화)·confidence 선언 + 건강도 카운트 1줄
+    (notes/edges/orphan/broken/stale/skipped — 건강도 줄은 일반 색인 실행에도 출력).
+  - 후속 조치: stale 노트는 후속 연구를 재조사해 `wiki_promote` 갱신(Compiled Truth REWRITE +
+    Timeline append)으로 되살리고, orphan은 관련 노트와 위키링크로 연결, broken link는 대상
+    노트 생성 또는 링크 정리. 감사 결과와 조치는 워크스페이스 CHANGELOG에 1줄 기록한다.
+- **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름) —
+  실행 절차는 §2.5 "지속 서베이" 절(`corpus_fetch --since --append` 델타 반입 루프).
 - **다중 노드 협업**: roles.md의 master·worker·reviewer·inspector가 어떻게 심의하는지(대규모 서베이).
 
 ## §3.5 — 산출물 규약 (불변)
