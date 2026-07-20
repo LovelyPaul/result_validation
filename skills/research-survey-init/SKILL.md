@@ -8,6 +8,12 @@ description: This skill scaffolds a standards-compliant research survey workspac
 workspace-standards(10단위 넘버링·CLAUDE.md 12섹션·메타파일)를 준수하는 연구 서베이 전용
 워크스페이스를 만든다. 템플릿은 `${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/assets/templates/workspace/`.
 
+**표준 베이스캠프 = workspace-standards** (템플릿이 이 표준을 준수하며, 이탈 시 `_meta/deviations.md`에 기록):
+- 10단위 폴더 넘버링(00~90) — `workspace-standards/01-FOLDER_NUMBERING.md`
+- CLAUDE.md 12섹션 스키마(정체성~품질·이력) — `workspace-standards/04-CLAUDE_MD_GUIDE.md`
+- "워크스페이스 = 하네스" 7-layer 개념(instruction surface·commands·agents·skills·hooks·state·memory)
+  및 하네스 강도 4단계(basic~meta-harness) — `workspace-standards/06-CLAUDE_CODE_AGENT_METHODOLOGY.md` §8
+
 ## 발동 시 즉시
 
 1. 대상을 확인한다 — **AskUserQuestion 툴 JSON으로** 묻는다(텍스트 질문 금지):

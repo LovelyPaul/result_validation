@@ -43,8 +43,11 @@ back to a page in the paper (`— Table 1, p.6`) and filters hallucinations thro
 |---|---|
 | `/research-survey` command | Router: `tutorial` / `init` / `run` / `help` |
 | `research-survey-main` skill | Live tutorial + orchestration (RUNBOOK is the SOT) |
-| `research-survey-init` skill | Scaffolds a workspace-standards workspace (10-unit numbering, CLAUDE.md 12-section) |
+| `research-survey-init` skill | Scaffolds a workspace-standards workspace (10-unit numbering, CLAUDE.md 12-section, 7-layer harness — standard docs cited by path) |
 | `research-survey-run` skill | One category cycle: extract → summarize → triple-verify → organize |
+| Root `CLAUDE.md` + `AGENTS.md` | Agent adapter — any agent (Codex etc.) runs the same RUNBOOK. **Variant opening**: if your first message is a research question, the agent answers bare (no files/web) and that answer becomes the bare-vs-grounded comparison material |
+| RUNBOOK §0.5 preflight | Probes OS/python and LLM CLIs (`command -v` / `Get-Command`, Windows + Unix commands both given) — only tools actually observed are offered as bare-LLM subjects; web-chat paste is the zero-CLI fallback |
+| RUNBOOK §3.5 output convention | Outputs go only to your workspace `artifacts/` or `40-drafts/` — never into the plugin folder; previous outputs are preserved under `artifacts/prev-<date>/`, not deleted |
 | references/ | RUNBOOK · phase_contracts · taxonomy_dial · quality_gates · roles · citation_rules |
 | assets/templates/ | taxonomy dial · survey section · self-contained comparison HTML · example workspace |
 | examples/ | ICML 2026 worked example (6,628 papers, 9 categories — real counts, verdicts, incidents) |
