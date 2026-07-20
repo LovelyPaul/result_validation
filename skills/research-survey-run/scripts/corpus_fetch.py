@@ -16,6 +16,8 @@ import argparse
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -59,15 +61,43 @@ def parse_atom(xml_text):
     return out
 
 
+RETRY_CODES = (429, 503)   # 일시 rate-limit — 1회 백오프 재시도 대상 (v0.4.1 F2 — 필드 실측)
+RETRY_WAIT = 45            # 백오프 초 (필드 실측: 45s 후 성공)
+
+
+def _default_opener(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "research-survey-corpus-fetch"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read().decode("utf-8")
+
+
+def _request(url, retry_wait=RETRY_WAIT, opener=_default_opener):
+    """HTTP GET + F2 오류 처리(필드 테스트 실측 반영): raw traceback 대신 명시 진단.
+    429/503(일시 rate-limit)은 retry_wait초 백오프 후 **1회** 재시도, 그래도 실패하면
+    SystemExit. 그 외 코드는 즉시 SystemExit 진단."""
+    try:
+        return opener(url)
+    except urllib.error.HTTPError as e:
+        if e.code in RETRY_CODES:
+            print(f"경고: arXiv API HTTP {e.code} (일시 rate-limit) — {retry_wait}s 백오프 후 "
+                  f"1회 재시도합니다.", file=sys.stderr)
+            time.sleep(retry_wait)
+            try:
+                return opener(url)
+            except urllib.error.HTTPError as e2:
+                raise SystemExit(f"arXiv API 요청 실패: HTTP {e2.code} — 백오프 재시도에도 실패. "
+                                 f"몇 분 뒤 다시 시도하라. (URL: {url})")
+        raise SystemExit(f"arXiv API 요청 실패: HTTP {e.code} {e.reason} — ID/검색어와 네트워크를 "
+                         f"확인하라. (URL: {url})")
+
+
 def fetch(ids=None, query=None, max_n=10):
     if ids:
         params = {"id_list": ",".join(ids), "max_results": str(len(ids))}
     else:
         params = {"search_query": f"all:{query}", "max_results": str(max_n)}
     url = API + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "research-survey-corpus-fetch"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return parse_atom(r.read().decode("utf-8"))
+    return parse_atom(_request(url))
 
 
 CORPUS_REQUIRED = ("id", "title", "abstract")   # 범용 코퍼스 스키마 필수키 (data-dictionary.md)
@@ -183,6 +213,41 @@ def _self_test():
                 failures.append(f"check_corpus 진단 메시지 이상({label}): {e}")
     if check_corpus([{"id": "x", "title": "정상", "abstract": "본문"}], "t.json") is not None:
         failures.append("check_corpus가 정상 코퍼스에서 값을 반환")
+    # v0.4.1 F2: HTTPError 처리 — 모의 opener(네트워크 0)
+    def _http_err(code):
+        return urllib.error.HTTPError("http://t", code, "msg", None, None)
+    calls = {"n": 0}
+    def _flaky(url):   # 1회 429 → 2회째 성공 (백오프 재시도 경로)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _http_err(429)
+        return _FIXTURE
+    import contextlib
+    import io
+    err2 = io.StringIO()
+    with contextlib.redirect_stderr(err2):
+        body = _request("http://t", retry_wait=0, opener=_flaky)
+    if calls["n"] != 2 or "DEER" not in body:
+        failures.append(f"F2 429 백오프 재시도 실패: calls={calls['n']}")
+    if "백오프" not in err2.getvalue():
+        failures.append(f"F2 백오프 경고 미출력: {err2.getvalue()!r}")
+    def _always_429(url):
+        raise _http_err(429)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            _request("http://t", retry_wait=0, opener=_always_429)
+        failures.append("F2 재시도 실패를 통과시킴")
+    except SystemExit as e:
+        if "재시도에도 실패" not in str(e):
+            failures.append(f"F2 재실패 진단 이상: {e}")
+    def _404(url):
+        raise _http_err(404)
+    try:
+        _request("http://t", retry_wait=0, opener=_404)
+        failures.append("F2 404를 통과시킴")
+    except SystemExit as e:
+        if "HTTP 404" not in str(e):
+            failures.append(f"F2 404 진단 이상: {e}")
     # R2 [5]: fetch 결과 0건 → 파일 미작성·기존 보존·명시 경고
     import tempfile
     with tempfile.TemporaryDirectory() as d:

@@ -2,6 +2,17 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.4.1] - 2026-07-21
+### Fixed (필드 테스트 F2~F7 — v0.4.0 발행본 신규 사용자 시나리오 실측 후속)
+- **(F2) `corpus_fetch` HTTP 오류 처리**: HTTPError가 raw traceback으로 노출되던 것을 명시
+  진단(상태코드·안내)으로 교체. 429/503(일시 rate-limit — 필드 실측)은 45s 백오프 후 **1회**
+  재시도, 그래도 실패하면 SystemExit. 모의 opener self-test 3케이스(백오프 성공·재실패·404).
+- (F3·F4·F5) `INSTALL_MARKETPLACE.md`에 "설치 문제 해결" 절 신설: clone 타임아웃=비공개 repo
+  404 가능성·로컬 add 폴백 / update는 `name@marketplace` 형식 필요 / Windows EBUSY 재시도.
+- (F6) DEMO ①에 수동 진행 시 최소 필요 폴더 4종 명시.
+- (F7) RUNBOOK §2.5에 다중라벨 편수 동반 변동 설명(카테고리 추가 시 기존 카테고리 편수도
+  변할 수 있음 — 정상 동작) 1줄.
+
 ## [0.4.0] - 2026-07-20
 ### Added
 - **`/research-survey demo`** — toy 실행 워크플로우(설치 직후 5~10분 자동 체험). 정본
