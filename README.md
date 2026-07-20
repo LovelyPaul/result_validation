@@ -21,6 +21,14 @@ English | [한국어](README.ko.md)
 /research-survey run <category>    # run one full survey cycle
 ```
 
+**Two ways to use:**
+1. **Marketplace install** (above) — the plugin ships its command/skills; the repo-root
+   `CLAUDE.md`/`AGENTS.md` adapter is **not loaded** in your project. Use `/research-survey`
+   (or natural-language triggers) to start.
+2. **Clone + `cd` into the repo** — the root adapter is active: any agent that reads
+   `AGENTS.md` (Codex etc.) runs the same RUNBOOK, and the **variant opening** works
+   (ask a research question as your first message → the bare answer becomes comparison material).
+
 ## Why research-survey?
 A "bare-LLM summary" reads plausible but has no sources. A **grounded survey** ties every number
 back to a page in the paper (`— Table 1, p.6`) and filters hallucinations through

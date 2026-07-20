@@ -8,11 +8,17 @@ description: This skill scaffolds a standards-compliant research survey workspac
 workspace-standards(10단위 넘버링·CLAUDE.md 12섹션·메타파일)를 준수하는 연구 서베이 전용
 워크스페이스를 만든다. 템플릿은 `${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/assets/templates/workspace/`.
 
-**표준 베이스캠프 = workspace-standards** (템플릿이 이 표준을 준수하며, 이탈 시 `_meta/deviations.md`에 기록):
-- 10단위 폴더 넘버링(00~90) — `workspace-standards/01-FOLDER_NUMBERING.md`
-- CLAUDE.md 12섹션 스키마(정체성~품질·이력) — `workspace-standards/04-CLAUDE_MD_GUIDE.md`
-- "워크스페이스 = 하네스" 7-layer 개념(instruction surface·commands·agents·skills·hooks·state·memory)
-  및 하네스 강도 4단계(basic~meta-harness) — `workspace-standards/06-CLAUDE_CODE_AGENT_METHODOLOGY.md` §8
+**표준 베이스캠프 = workspace-standards** (템플릿이 이 표준을 준수하며, 이탈 시 `_meta/deviations.md`에 기록.
+아래 요지만으로 표준 리포 없이 이해·진행 가능):
+- **10단위 폴더 넘버링**(00~90) — 폴더는 2자리 숫자 접두(`00-system/`~`90-archive/`)로 시작:
+  정렬 보장·중간 삽입 여유·혼용 금지. 원문: `workspace-standards/01-FOLDER_NUMBERING.md`
+- **CLAUDE.md 12섹션 스키마** — ①제목+한 줄 ②대상 런타임 ③정체성(허용/금지) ④핵심 원칙
+  ⑤폴더 구조 ⑥워크플로우 ⑦커맨드 ⑧Scale Modes ⑨트리거 경계 ⑩도메인 프레임워크
+  ⑪산출물 형식 ⑫품질 규칙+변경 이력. 원문: `workspace-standards/04-CLAUDE_MD_GUIDE.md`
+- **"워크스페이스 = 하네스" 7-layer** — instruction surface(CLAUDE.md)·commands·agents·skills·
+  hooks·state·memory 7층 = 하나의 특화 에이전트. 원문:
+  `workspace-standards/06-CLAUDE_CODE_AGENT_METHODOLOGY.md` §8.1. 하네스 강도 4단계
+  (basic/runtime-ready/runtime-enforced/meta-harness)는 같은 문서 §8.2
 
 ## 발동 시 즉시
 

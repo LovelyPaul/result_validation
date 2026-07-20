@@ -2,6 +2,27 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.2.1] - 2026-07-20
+### Fixed (리뷰어 R1 수렴 지적 — 2종 REVISE 통합)
+- **RUNBOOK §3.5 예외 신설**: 현재 작업 폴더가 플러그인 폴더 자체(clone 루트)인 세션은 거기에
+  `artifacts/`를 만들지 않는다 — AskUserQuestion으로 산출 위치(사용자 폴더)를 물어 지정.
+- **맨몸 요약 지시문 원문 명문화**(§0.5): "웹 검색·파일·도구 접근 없이, 이미 알고 있는
+  학습지식만으로 답하세요. 모르는 내용은 모른다고 답하세요" 지시문을 placeholder 없이 수록.
+  피험체 실행 cwd = 플러그인 폴더 밖 빈 폴더(bash/PowerShell 생성 명령 병기). 도구차단
+  플래그는 실존 확인분만 기재 — claude `--tools ""`(모든 내장 도구 비활성, help 실측).
+  codex·gemini·ollama는 전체 차단 플래그 미확인이라 지시문 문구+빈 cwd로 통제함을 명시.
+- **AGENTS.md 변형 오프닝 정밀화**: ①즉답이 RUNBOOK 선독보다 우선(우선순위 명문화)
+  ②특정 PDF·파일 첨부/지정 요약 요청은 변형 오프닝 아님(정상 처리) ③과거 답 재사용 시
+  "같은 세션의 과거 답"임을 청중에 고지.
+- **workspace-standards 참조 자립화**: RUNBOOK 환경 전제·init SKILL.md의 경로 인용 옆에
+  핵심 요지 인라인(10단위 요지·12섹션 전체 목록·7-layer 한 줄) — 표준 리포 없이 이해 가능.
+- **§0.5 PowerShell 블록 보강**: OS 실측 출력(`[System.Environment]::OSVersion`),
+  python 폴백(`Get-Command` 선확인 → `py -3 --version`).
+- §0.5 선택지 예시에 gemini 추가. 7-layer 인용을 §8.1(7-layer)/§8.2(강도 4단계)로 통일
+  (RUNBOOK·init SKILL·CHANGELOG 0.2.0 항목).
+- **README 2종 사용 모드 명시**: 마켓플레이스 설치(루트 어댑터 미로드 — command/skill 사용)
+  vs clone+cd(어댑터 유효 — 변형 오프닝 동작) 구분 안내.
+
 ## [0.2.0] - 2026-07-20
 ### Added
 - **루트 에이전트 어댑터**: `CLAUDE.md`(= `@AGENTS.md` 포인터 1줄) + `AGENTS.md`(RUNBOOK 정본
@@ -16,7 +37,7 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   삭제 대신 `artifacts/prev-<날짜>/` 보존.
 - **workspace-standards 명시 참조**: RUNBOOK 환경 전제·init SKILL.md에 표준 문서 경로 명기 —
   10단위 넘버링(`01-FOLDER_NUMBERING.md`)·CLAUDE.md 12섹션(`04-CLAUDE_MD_GUIDE.md`)·
-  하네스 7-layer(`06-CLAUDE_CODE_AGENT_METHODOLOGY.md` §8). init 템플릿 워크스페이스가
+  하네스 7-layer(`06-CLAUDE_CODE_AGENT_METHODOLOGY.md` §8.1)·강도 4단계(§8.2). init 템플릿 워크스페이스가
   표준 정합임을 재확인(CLAUDE.md 12섹션 실측).
 ### Changed
 - RUNBOOK 진행 톤 규약 보강(wiki-demo 실측 교훈 반영): 톤 적용 범위 = 운영 브리핑 포함 모든
