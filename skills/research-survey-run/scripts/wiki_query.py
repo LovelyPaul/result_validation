@@ -30,30 +30,11 @@ NOTES_REL = f"{WIKI_REL}/notes"
 QUERIES_REL = f"{WIKI_REL}/queries"
 INDEX_REL = f"{WIKI_REL}/.index"
 
-_FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.S)
-_KV_RE = re.compile(r"([A-Za-z_][\w-]*):\s*(.*)$")
-
-
-def parse_frontmatter(text):
-    """정규식 frontmatter 파서(pyyaml 미사용). wiki_index.parse_frontmatter와 동일 규약."""
-    m = _FM_RE.match(text)
-    if not m:
-        return {}, text
-    fm = {}
-    for line in m.group(1).splitlines():
-        line = line.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-        mm = _KV_RE.match(line.strip())
-        if not mm:
-            continue
-        key, val = mm.group(1), mm.group(2).strip()
-        if val.startswith("[") and val.endswith("]"):
-            inner = val[1:-1].strip()
-            fm[key] = [x.strip().strip('"').strip("'") for x in inner.split(",") if x.strip()] if inner else []
-        else:
-            fm[key] = val.strip().strip('"').strip("'")
-    return fm, text[m.end():]
+# 노트 로딩은 wiki_index.load_notes를 공용한다 (v0.4.0 R2 major-1 — 이중 정의 제거):
+# 스키마 fail-closed(REQUIRED_KEYS 미충족 .md는 노트 미취급)·중복 id SystemExit 불변식이
+# 색인층과 검색층에서 글자 그대로 같은 코드로 강제된다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from wiki_index import REQUIRED_KEYS, load_notes as _load_notes_list  # noqa: E402
 
 
 # ── 문자 bigram BM25 (wiki-demo wiki/scripts/query.py 이식 — 수식·전처리 그대로) ──
@@ -142,20 +123,13 @@ def fts5_top(db_path, question, k=BM25_TOPK):
 # ── 노트 로드·리포트 ────────────────────────────────────────────────
 
 def load_notes(notes_dir):
-    """notes/*.md → {id: {title, body, tags, path}}. id는 frontmatter 우선, 없으면 stem.
-    중복 id는 fail-closed(SystemExit) — dict overwrite로 한 노트 본문을 조용히 잃는 것을
-    금지한다 (R1 major-3, wiki_index.load_notes와 동일 불변식)."""
-    out = {}
-    for p in sorted(Path(notes_dir).glob("*.md")):
-        fm, body = parse_frontmatter(p.read_text(encoding="utf-8"))
-        nid = fm.get("id") or p.stem
-        if nid in out:
-            raise SystemExit(
-                f"duplicate note id '{nid}' — {out[nid]['path']} ↔ {p}. 노트 id는 유일해야 한다"
-                f"(fail-closed). 한쪽 노트의 frontmatter id를 바꾼 뒤 다시 검색하라.")
-        out[nid] = {"title": fm.get("title") or p.stem, "body": body.strip(),
-                    "tags": fm.get("tags") or [], "source": fm.get("source", ""), "path": str(p)}
-    return out
+    """notes/*.md → {id: {title, body, tags, source, path}}. **wiki_index.load_notes 공용** —
+    stem 폴백 없음: REQUIRED_KEYS(id/title/created/tags) 미충족 .md(README 등)는 노트로
+    취급하지 않으므로 검색·리포트에 절대 들어가지 않는다. 중복 id는 SystemExit(fail-closed).
+    (v0.4.0 R2 major-1 — 색인층과 같은 코드로 불변식 실체화.)"""
+    notes, _skipped = _load_notes_list(notes_dir)
+    return {n["id"]: {"title": n["title"], "body": n["body"], "tags": n["tags"],
+                      "source": n["source"], "path": n["path"]} for n in notes}
 
 
 def _slug(s):
@@ -242,13 +216,16 @@ def _self_test():
         notes = ws / NOTES_REL
         notes.mkdir(parents=True)
         (notes / "alpha.md").write_text(
-            "---\nid: alpha\ntitle: LLM Pretraining\ntags: [llm]\n"
+            "---\nid: alpha\ntitle: LLM Pretraining\ncreated: 2026-07-20\ntags: [llm]\n"
             "source: arXiv:2401.1, Table 1, p.6\n---\n대규모 언어모델 사전학습 데이터 품질.\n",
             encoding="utf-8")
         (notes / "beta.md").write_text(
-            "---\nid: beta\ntitle: Medical Seg\ntags: [medical]\n"
+            "---\nid: beta\ntitle: Medical Seg\ncreated: 2026-07-20\ntags: [medical]\n"
             "source: arXiv:2402.2, p.3\n---\n의료 영상 분할 합성 데이터 증강.\n",
             encoding="utf-8")
+        # v0.4.0 R2 major-1: frontmatter 없는 .md(README)는 검색·리포트에 절대 미등장
+        (notes / "README.md").write_text("# 안내문 — frontmatter 없음. 검색되면 안 된다.\n",
+                                         encoding="utf-8")
         # 색인 없이(bigram-only) 쿼리 — index db 부재에도 동작해야 함
         out, union, ch = query(str(ws), "언어모델 사전학습", k=5)
         if not out.exists():
@@ -262,10 +239,13 @@ def _self_test():
         for wl in re.findall(r"\[\[([^\]]+)\]\]", report):
             if wl not in {"alpha", "beta"}:
                 failures.append(f"dangling 위키링크: {wl}")
+        # v0.4.0 R2 major-1: README가 결과·리포트 어디에도 없어야 (stem 폴백 제거 검증)
+        if "README" in union or "README" in report or "안내문" in report:
+            failures.append("frontmatter 없는 README가 검색층에 혼입됨")
 
         # R1 major-3: 중복 frontmatter id → fail-closed (dict overwrite 본문 유실 금지)
         (notes / "dup2.md").write_text(
-            "---\nid: alpha\ntitle: Dup Alpha\ntags: [x]\nsource: p.1\n---\n다른 본문.\n",
+            "---\nid: alpha\ntitle: Dup Alpha\ncreated: 2026-07-20\ntags: [x]\nsource: p.1\n---\n다른 본문.\n",
             encoding="utf-8")
         try:
             query(str(ws), "아무 질문", k=3)

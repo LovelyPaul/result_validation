@@ -70,16 +70,40 @@ def fetch(ids=None, query=None, max_n=10):
         return parse_atom(r.read().decode("utf-8"))
 
 
+CORPUS_REQUIRED = ("id", "title", "abstract")   # 범용 코퍼스 스키마 필수키 (data-dictionary.md)
+
+
 def check_corpus(obj, path):
-    """--append 대상 코퍼스 타입/스키마 검증 (R1 [4]) — 비list·비dict 원소·id 없는 항목은
-    명시 거부(SystemExit). 오염된 코퍼스에 조용히 병합하는 것을 금지한다."""
+    """--append 대상 코퍼스 타입/스키마 검증 (R1 [4]·R2 [4] 확장) — 비list·비dict 원소·
+    필수키(id/title/abstract — data-dictionary 문서 기준) 누락 항목은 명시 거부(SystemExit).
+    classify가 title/abstract를 읽으므로 id만으로는 하류 동작을 보장하지 못한다.
+    오염된 코퍼스에 조용히 병합하는 것을 금지한다."""
     if not isinstance(obj, list):
         raise SystemExit(f"코퍼스 스키마 위반: {path} 는 JSON 배열이어야 한다 (실제: {type(obj).__name__})")
     for i, e in enumerate(obj):
         if not isinstance(e, dict):
             raise SystemExit(f"코퍼스 스키마 위반: {path} [{i}] 원소가 객체가 아니다 (실제: {type(e).__name__})")
-        if not e.get("id"):
-            raise SystemExit(f"코퍼스 스키마 위반: {path} [{i}] 항목에 id 가 없다 — 범용 스키마 필수키")
+        missing = [k for k in CORPUS_REQUIRED if not e.get(k)]
+        if missing:
+            raise SystemExit(f"코퍼스 스키마 위반: {path} [{i}] 항목에 필수키 누락 {missing} — "
+                             f"범용 스키마 필수 = {'/'.join(CORPUS_REQUIRED)}")
+
+
+def save(rows, out, append):
+    """fetch 결과 저장. **0건이면 파일을 쓰지 않는다**(기존 코퍼스 보존·명시 경고, R2 [5])."""
+    if not rows:
+        raise SystemExit("경고: 반입 결과 0건 — 코퍼스 파일을 쓰지 않는다(기존 파일 보존). "
+                         "검색어/ID를 확인하라.")
+    out = Path(out)
+    if append and out.exists():
+        existing = json.loads(out.read_text(encoding="utf-8"))
+        check_corpus(existing, str(out))   # 병합 전 스키마 검증 (R1 [4])
+        merged, added, skipped = merge(existing, rows)
+    else:
+        merged, added, skipped = rows, rows, []
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    return merged, added, skipped
 
 
 def merge(existing, new):
@@ -145,18 +169,34 @@ def _self_test():
         failures.append(f"비Atom feed 결과 이상: {rows_nons}")
     if "Atom 네임스페이스가 아닌" not in err.getvalue():
         failures.append(f"비Atom feed 경고 미출력: {err.getvalue()!r}")
-    # R1 [4]: --append 코퍼스 스키마 검증 — 비list·비dict 원소·id 없는 항목 명시 거부
+    # R1 [4]+R2 [4]: --append 코퍼스 스키마 검증 — 비list·비dict·필수키(id/title/abstract) 누락 거부
     for bad, label in (({"not": "a list"}, "비list"),
                        (["문자열원소"], "비dict 원소"),
-                       ([{"title": "id 없음"}], "id 없는 항목")):
+                       ([{"title": "id 없음", "abstract": "a"}], "id 누락"),
+                       ([{"id": "x", "abstract": "a"}], "title 누락"),
+                       ([{"id": "x", "title": "t"}], "abstract 누락")):
         try:
             check_corpus(bad, "test-corpus.json")
             failures.append(f"check_corpus가 {label}를 통과시킴")
         except SystemExit as e:
             if "스키마 위반" not in str(e):
                 failures.append(f"check_corpus 진단 메시지 이상({label}): {e}")
-    if check_corpus([{"id": "x", "title": "정상"}], "t.json") is not None:
+    if check_corpus([{"id": "x", "title": "정상", "abstract": "본문"}], "t.json") is not None:
         failures.append("check_corpus가 정상 코퍼스에서 값을 반환")
+    # R2 [5]: fetch 결과 0건 → 파일 미작성·기존 보존·명시 경고
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "corpus.json"
+        original = '[{"id": "keep", "title": "t", "abstract": "a"}]'
+        out.write_text(original, encoding="utf-8")
+        try:
+            save([], out, append=True)
+            failures.append("0건인데 save가 통과")
+        except SystemExit as e:
+            if "0건" not in str(e):
+                failures.append(f"0건 경고 메시지 이상: {e}")
+        if out.read_text(encoding="utf-8") != original:
+            failures.append("0건 save가 기존 파일을 변경함")
     if failures:
         print("SELF-TEST FAIL:")
         for f in failures:
@@ -183,14 +223,7 @@ def main():
     rows = fetch(ids=[i.strip() for i in a.ids.split(",")] if a.ids else None,
                  query=a.query, max_n=a.max)
     out = Path(a.workspace) / CORPUS_REL
-    if a.append and out.exists():
-        existing = json.loads(out.read_text(encoding="utf-8"))
-        check_corpus(existing, str(out))   # 병합 전 스키마 검증 (R1 [4])
-        merged, added, skipped = merge(existing, rows)
-    else:
-        merged, added, skipped = rows, rows, []
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    merged, added, skipped = save(rows, out, a.append)
     print(f"반입 완료: 신규 {len(added)}편 · 중복 스킵 {len(skipped)}편 · 총 {len(merged)}편 → {out}")
     for r in added:
         print(f"  + {r['id']}  {r['title'][:80]}")

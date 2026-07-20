@@ -26,7 +26,7 @@ allowed-tools:
 | 인자 | 분기 | 스킬 | 설명 |
 |---|---|---|---|
 | `tutorial` (또는 인자 없음) | 튜토리얼 진행 | `research-survey-main` | 정본 `references/RUNBOOK.md`를 읽고 단계별 라이브 튜토리얼 진행 |
-| `demo` | toy 자동 체험 | `research-survey-main` | 정본 `references/DEMO.md` — 설치 직후 샘플만으로 추출→위키 검색→검수 거부 2종→승격을 자동 진행(5~10분) |
+| `demo` | toy 가이드 체험 | `research-survey-main` | 정본 `references/DEMO.md` — 설치 직후 샘플만으로 추출→위키 검색→검수 거부 2종→승격을 가이드 진행(5~10분·각 단계 질문 종료) |
 | `init <주제>` | 워크스페이스 생성 | `research-survey-init` | workspace-standards 준수 서베이 워크스페이스 스캐폴딩 |
 | `run <카테고리>` | 한 사이클 실행 | `research-survey-run` | 지정 카테고리를 추출→요약→검증→정리까지 1사이클 |
 | `help` | 도움말 | (이 파일) | 아래 개요 출력 |
@@ -36,7 +36,8 @@ allowed-tools:
 1. 인자를 파싱한다. 인자가 없거나 `tutorial`이면 `research-survey-main` 스킬을 발동해
    `${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/references/RUNBOOK.md`의 §0 인트로부터 진행한다.
    `demo`면 `${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/references/DEMO.md`를 읽고
-   ①~⑥ 흐름을 자동 진행한다(대상 폴더만 질문·각 단계 배너+질문 종료).
+   ①~⑥ 흐름을 가이드 진행한다(각 단계 배너로 시작해 질문으로 종료 — 자기-계속 금지,
+   대상 폴더 등 선택은 AskUserQuestion).
 2. `init`이면 대상 주제를 확인하고(모호하면 AskUserQuestion 툴 JSON으로 질문 — 텍스트 질문 금지)
    `research-survey-init` 스킬로 워크스페이스를 만든다.
 3. `run`이면 대상 카테고리를 확인하고 `research-survey-run` 스킬로 1사이클을 돌린다.

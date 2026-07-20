@@ -98,7 +98,8 @@ if (Get-Command ollama -ErrorAction SilentlyContinue) { ollama list }
 ```
 
 Windows면 이후 모든 명령의 경로 구분자·`cp`·`mkdir -p`를 PowerShell식으로 바꿔 실행한다
-(`cp` → `Copy-Item`, `~` → `$HOME`).
+(`cp` → `Copy-Item`, `~` → `$HOME`, **`python3` → `python` 또는 `py -3`** — 이 문서·DEMO.md의
+모든 코드 블록에 적용).
 
 **② 맨몸 대조용 LLM 도구 선택 질문** — [요약·맨몸 대조] 단계에서 "맨몸 LLM 요약"을 만들
 피험체를 고른다. **①에서 실측된 도구만 선택지에 올린다 — 실측 안 된 도구는 선택지 금지.**

@@ -102,6 +102,7 @@ def load_notes(notes_dir):
             "id": nid,
             "title": fm.get("title") or p.stem,
             "tags": tags,
+            "source": fm.get("source", ""),
             "body": body.strip(),
             "sha": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "path": str(p),
