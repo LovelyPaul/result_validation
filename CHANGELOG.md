@@ -37,6 +37,16 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   **Reciprocal Rank Fusion(K=60)**으로 교체 — 결정론·(-score,id) 정렬. BM25 수식 자체는 불변.
 - **RUNBOOK wiki 운영 원칙**: brain-first(C3 — 외부 검색 전 위키 먼저)·컴파일 단계 분리(B1)·
   추측 금지(E5) 명시.
+### Added (증보 2 — 샘플 research topic 코퍼스·다이얼 동봉)
+- **`60-data/corpus.sample.json`** (템플릿 워크스페이스): 15편 — 스터디 주제 "리서치 검수
+  하네스(할루시네이션을 잡는 평가·리뷰 하네스)" 관련 7편(DEER 2512.17776·CRITIC 2305.11738·
+  SelfCheckGPT 2303.08896·LLM-as-a-Judge 2306.05685·ChatEval 2308.07201·G-Eval 2303.16634·
+  Siren's Song 서베이 2309.01219 — **전건 arXiv 페이지 실측 검증, 제목·초록 verbatim**) +
+  무관 8편(VLM 토큰압축·병리 MLLM 등 — 실측 코퍼스 papers.jsonl에서 verbatim 복사·발명 0).
+- **`00-system/taxonomy.sample.json`**: 해당 주제 1카테고리 다이얼(threshold 4·guard lm·
+  노이즈=토큰압축/KV-cache/멀티모달). **결정론 실증**: classify.py 실행 실측 — 관련 7/7 분류
+  (재현율 100%)·무관 8편 오탐 0. RUNBOOK 환경 전제의 "코퍼스가 없으면" 경로를 이 샘플 복사
+  실데이터 진행으로 갱신(낭독 모드는 보조).
 ### Design (로드맵 — 문서 기재만·v0.3.0 미구현)
 - vector 임베딩 채널·시맨틱 캐시·토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·
   엣지 confidence decay — stdlib 플러그인 범위 밖, RUNBOOK §3 "향후 확장"에 명시.

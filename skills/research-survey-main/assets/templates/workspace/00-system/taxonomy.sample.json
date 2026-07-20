@@ -1,0 +1,38 @@
+{
+  "_doc": "샘플 다이얼 — 스터디 주제 '리서치 검수 하네스(할루시네이션을 잡는 평가·리뷰 하네스)' 1카테고리. corpus.sample.json(관련 7편+무관 8편)과 짝. 사용: 두 파일을 00-system/taxonomy.json·60-data/corpus.json으로 복사 후 classify.py --workspace . 실행. 정규식 인라인 (?i) 금지(분류기가 IGNORECASE 컴파일).",
+  "title_weight": 3,
+  "default_threshold": 3,
+  "guards": {
+    "lm": "\\b(LLMs?|large language models?|language models?|foundation models?|GPT[-0-9a-z]*)\\b"
+  },
+  "categories": {
+    "research-review-harness": {
+      "desc": "리서치 검수 하네스 — LLM 산출물의 할루시네이션을 잡는 평가·리뷰·검증 (LLM 평가, 할루시네이션 검출, LLM-as-judge, multi-agent 검증, CRITIC류 자기교정)",
+      "guard": "lm",
+      "threshold": 4,
+      "patterns": [
+        "hallucinat\\w*",
+        "LLM[- ]as[- ]a[- ]judge|judging LLM",
+        "multi[- ]agent (debate|referee)",
+        "self[- ]correct\\w*|critiqu\\w*",
+        "NLG evaluation|LLM[- ]based evaluat\\w*",
+        "benchmark for evaluating|claim verification",
+        "fact[- ]check\\w*"
+      ],
+      "relevance_terms": [
+        "\\bjudges?\\b",
+        "\\brubrics?\\b",
+        "factuality|non[- ]factual",
+        "human (preferences?|judgments?|alignment)",
+        "\\bverif\\w+"
+      ],
+      "noise_terms": [
+        "\\btokens?\\b",
+        "KV[- ]cache",
+        "vision[- ]language|multi[- ]?modal|VLMs?|MLLMs?",
+        "\\bvideo\\b"
+      ],
+      "exclude": []
+    }
+  }
+}
