@@ -22,6 +22,20 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   (RUNBOOK·init SKILL·CHANGELOG 0.2.0 항목).
 - **README 2종 사용 모드 명시**: 마켓플레이스 설치(루트 어댑터 미로드 — command/skill 사용)
   vs clone+cd(어댑터 유효 — 변형 오프닝 동작) 구분 안내.
+### Fixed (리뷰어 R2 잔여 — reviewer-2 major 1·minor 3 + reviewer-1 minor)
+- **(major) §0.5 PowerShell 프로브 파싱 오류 수정**: 이중따옴표 문자열 안 `"$c:"`를 PowerShell이
+  스코프 변수로 파싱해 블록 전체가 ParserError로 죽던 버그(리뷰어 실행 재현) — `"${c}:"`
+  중괄호 구분으로 수정, 수정 블록 실제 실행으로 오류 소멸 실측. 같은 블록·파일 전수 점검
+  (bash 블록의 `"$c:"`는 bash 정상 문법, `$env:TEMP`는 유효 스코프 한정자 — 해당 없음).
+- §0.5 선택지를 최대 4개로(AskUserQuestion options 스키마 상한 4 실측) — 웹 챗 복붙은
+  선택지에서 빼 폴백 문장으로 전환. AskUserQuestion 툴이 없는 에이전트(Codex 등)는
+  일반 텍스트 질문으로 대체함을 명시.
+- §3.5 예외의 플러그인 폴더 탐지를 확장: 현재 폴더 직하만이 아니라 **상위 폴더 포함**
+  `.claude-plugin/plugin.json` 발견 시 발동(하위 폴더에서 진행해도 적용).
+- 워크스페이스 템플릿 CLAUDE.md의 "10. 도구(결정론)" 섹션이 표준 12섹션 목록 밖 추가라
+  번호 매핑이 어긋나는 점을 템플릿 `_meta/deviations.md`에 기록(추가 자체는 허용).
+- 맨몸 피험체 권장 1순위를 명시: ollama(구조적 무도구)·claude `--tools ""`(도구 빈값) —
+  웹 미차단 피험체(codex·gemini)는 차선임을 표기.
 
 ## [0.2.0] - 2026-07-20
 ### Added

@@ -88,7 +88,7 @@ command -v ollama >/dev/null 2>&1 && ollama list   # 로컬 모델 목록까지 
 # Windows (PowerShell)
 "OS: Windows $([System.Environment]::OSVersion.Version)"
 if (Get-Command python -ErrorAction SilentlyContinue) { python --version } elseif (Get-Command py -ErrorAction SilentlyContinue) { py -3 --version } else { "python: 없음" }
-foreach ($c in "codex","claude","gemini","ollama") { if (Get-Command $c -ErrorAction SilentlyContinue) { "$c: 있음" } }
+foreach ($c in "codex","claude","gemini","ollama") { if (Get-Command $c -ErrorAction SilentlyContinue) { "${c}: 있음" } }
 if (Get-Command ollama -ErrorAction SilentlyContinue) { ollama list }
 ```
 
@@ -97,14 +97,19 @@ Windows면 이후 모든 명령의 경로 구분자·`cp`·`mkdir -p`를 PowerSh
 
 **② 맨몸 대조용 LLM 도구 선택 질문** — [요약·맨몸 대조] 단계에서 "맨몸 LLM 요약"을 만들
 피험체를 고른다. **①에서 실측된 도구만 선택지에 올린다 — 실측 안 된 도구는 선택지 금지.**
-AskUserQuestion 툴 JSON으로 묻는다. 예시:
+AskUserQuestion 툴 JSON으로 묻는다(**선택지는 최대 4개** — 툴 스키마의 options 상한이 4다).
+웹 챗 복붙은 선택지에 넣지 말고 질문 끝에 폴백 문장으로 안내한다. AskUserQuestion 툴이 없는
+에이전트(Codex 등 — 루트 `AGENTS.md`로 진행하는 경우)는 같은 내용을 일반 텍스트 질문으로 묻는다.
+예시:
 
 > 이 환경에서 확인된 AI 도구는 다음과 같아요. 어느 것으로 "근거 없이 맨몸으로 요약하기"를 해볼까요?
 > 1. codex
 > 2. claude (Claude Code — 새 프로세스)
 > 3. gemini (Gemini CLI)
 > 4. ollama (로컬 모델: 방금 확인된 목록)
-> 5. 웹 챗 복붙 — 제가 요약 지시문을 드리면 쓰시는 채팅창(ChatGPT, Gemini 등)에 붙여넣고 답을 가져와 주세요
+>
+> (CLI를 쓰기 어려우시면 웹 챗 복붙으로도 됩니다 — 제가 요약 지시문을 드리면 쓰시는
+> 채팅창(ChatGPT, Gemini 등)에 붙여넣고 답을 가져와 주세요.)
 
 **맨몸 요약 지시문 (원문 — 이대로 사용, 즉석 변형 금지)**:
 
@@ -119,6 +124,9 @@ AskUserQuestion 툴 JSON으로 묻는다. 예시:
 (bash: `L0DIR=$(mktemp -d); cd "$L0DIR"` / PowerShell:
 `$L0DIR = New-Item -ItemType Directory "$env:TEMP\bare-$(Get-Random)"; cd $L0DIR`) —
 파일 도구가 있는 에이전트는 작업 폴더를 자동 탐색해 원문·references를 읽어버릴 수 있다.
+
+**권장 피험체 1순위 = ollama(구조적으로 도구·웹 접근이 없음) 또는 claude `--tools ""`(도구
+빈값 지정)** — 웹 검색이 차단되지 않는 codex·gemini는 차선이다(지시문 문구 준수에 의존).
 
 도구별 실행 형태(있는 것만·모델 지정은 선택):
 
@@ -193,8 +201,9 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
   - 워크스페이스(init으로 만든 10단위 구조)가 있으면: 작업 중 요약·초안은 `40-drafts/`,
     튜토리얼 대조표·기록물은 `artifacts/`(없으면 생성).
   - 워크스페이스 없이 튜토리얼만 진행 중이면: 현재 작업 폴더에 `artifacts/`를 만들어 그 안에만 쓴다.
-  - **예외 — 현재 작업 폴더가 플러그인 폴더 자체일 때**(clone 루트에서 `cd`해 진행하는 세션 —
-    현재 폴더에 `.claude-plugin/plugin.json`이 보이면 이 경우다): 여기에 `artifacts/`를 만들면
+  - **예외 — 현재 작업 폴더가 플러그인 폴더 안일 때**(clone 루트 또는 그 하위 폴더에서
+    진행하는 세션 — 현재 폴더 **또는 상위 폴더 어디에든** `.claude-plugin/plugin.json`이
+    보이면 이 경우다): 여기에 `artifacts/`를 만들면
     "플러그인 폴더에 쓰지 않는다" 규약과 충돌한다. 이때는 현재 폴더에 만들지 말고,
     **AskUserQuestion으로 산출 위치(사용자 폴더)를 물어** 지정받은 곳에 `artifacts/`를 만든다.
 - **플러그인 폴더(`${CLAUDE_PLUGIN_ROOT}` 아래)에는 아무것도 쓰지 않는다** — 템플릿·references·
