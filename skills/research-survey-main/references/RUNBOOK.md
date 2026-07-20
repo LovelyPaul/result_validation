@@ -1,6 +1,6 @@
 ---
 title: research-survey RUNBOOK (정본 대본)
-version: 0.2.1
+version: 0.3.0
 duration: 15-20분 (코어) + 확장
 role: 진행자(에이전트)가 이 대본을 읽고 라이브로 튜토리얼을 진행한다
 ---
@@ -170,7 +170,7 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
 | 7–10 | **[검증]** 3중 검증 시연 | 자가검증(grep) → 독립 실측 → 표본 원문 대조. 발명 수치·페이지 오인용이 어떻게 걸리는지 |
 | 10–12 | **[인사이트]** | 쇼트리스트에서 주제 클러스터·트렌드·연구 갭 추출 |
 | 12–14 | **[가설]** | 갭에서 falsifiable 가설 1개 작성 → idea-critic 채점(novelty·feasibility·impact) → accept/hold |
-| 14–15 | **[정리·지속]** | 대조표 HTML 1장 생성 + "매일 arXiv 자동 추적"으로 이어지는 구조 설명 |
+| 14–15 | **[정리·지속]** | 대조표 HTML 1장 생성 + 검증 통과 요약을 wiki 정본으로 승격(`wiki_promote` dry-run→apply)하고 `wiki_query`로 되찾아 보이기 + "매일 arXiv 자동 추적"으로 이어지는 구조 설명 |
 
 ### 각 단계 배너 (출력 형식)
 각 단계 시작 시 한 줄 배너로 위치를 알린다:
@@ -183,6 +183,10 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
   SFT 18.73 — Table 1, p.6"처럼 되짚어진다. **이 대비가 오늘의 핵심.**
 - **[검증]**: 요약 착수 전 "PDF 1페이지 제목 ↔ 목록 제목" 대조(엉뚱한 논문 요약 방지) 시연.
 - **[가설]**: hold가 실패가 아니라 "게이트가 작동한 것"임을 강조 — 근거 없는 아이디어가 승격되지 않음.
+- **[정리·지속]**: wiki 레이어가 계약이 아니라 **실제 동작하는 도구**임을 보인다 — 검증 통과 요약을
+  `wiki_promote`로 정본 승격(dry-run diff → 승인 → apply, 출처 없는 노트는 게이트가 거부),
+  `wiki_index`로 색인, `wiki_query`로 같은 질문을 다시 던져 근거 발췌를 되찾아 보여준다.
+  "한 번 요약하고 끝이 아니라, 검색·되찾기 가능한 정본으로 쌓인다"가 핵심.
 
 ---
 
@@ -193,6 +197,10 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
 ## §3 — 확장 모듈 (시간 남으면)
 - **다이얼 조정 루프**: noise_terms/relevance_terms를 즉석에서 바꿔 재추출 → before/after 편수 diff.
 - **새 카테고리 추가**: taxonomy에 관심 주제 1개 추가 → 추출까지. "새 주제는 코드 변경 0".
+- **wiki 검색·승격 실연**: 검증 통과 요약을 `wiki_promote`로 정본 승격(dry-run→apply·출처 게이트),
+  `wiki_index`로 색인(FTS5 가용 시 FTS5+bm25(), 불가 시 순수 파이썬 bigram BM25 폴백),
+  `wiki_query`로 한국어·영어 질문을 던져 유니온 top-k 근거 발췌를 되찾는다. 존재 노트만
+  위키링크(dangling 0). BM25 수식은 wiki-demo query.py에서 이식(ablation 검증 수식).
 - **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름).
 - **다중 노드 협업**: roles.md의 master·worker·reviewer·inspector가 어떻게 심의하는지(대규모 서베이).
 

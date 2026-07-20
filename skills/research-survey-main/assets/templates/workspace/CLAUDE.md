@@ -58,6 +58,9 @@ _meta/            deviations.md (표준 이탈 기록)
 ## 10. 도구 (결정론)
 - 분류: `classify.py --workspace .` (00-system/taxonomy.json + 60-data/corpus.json → 70-analysis/).
 - 검수: `verify_summaries.py --dir 40-drafts/<cat>`. 둘 다 플러그인 `skills/research-survey-run/scripts/`.
+- wiki 색인: `wiki_index.py --workspace .` (20-knowledge-base/wiki/notes/*.md → FTS5 색인 또는 python 폴백).
+- wiki 검색: `wiki_query.py --workspace . "<질문>"` (FTS5 매치 + 문자 bigram BM25 유니온 → wiki/queries/ 리포트).
+- wiki 승격: `wiki_promote.py --workspace . <산출물.md>` (기본 dry-run diff, `--apply`는 승인 후 — 정본 직접 쓰기 금지 게이트).
 
 ## 11. 산출물 형식
 - 요약: Summary 4절 + Evidence 페이지 인용 + source_pdf. 서베이: 증분 문헌 지도(Delta Log). 대조표: 자립형 HTML.

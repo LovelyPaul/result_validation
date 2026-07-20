@@ -41,7 +41,7 @@ back to a page in the paper (`— Table 1, p.6`) and filters hallucinations thro
    -> [shortlist]
    -> [summarize] per-paper PDF-grounded summary (4-part + page-cited Evidence + source_pdf)
    -> [verify]   TRIPLE: self-check -> independent re-measure -> sample PDF cross-read
-   -> [organize] Notion / wiki accumulation + insight extraction
+   -> [organize] wiki index/search (FTS5 + char-bigram BM25) + promote gate -> Notion (optional) + insight extraction
    -> [hypothesis] idea-critic scoring (reviewer + inspector) -> accept/hold -> ledger
    -> [continuous] daily arXiv matched by the same dial -> digest
 ```
@@ -53,6 +53,7 @@ back to a page in the paper (`— Table 1, p.6`) and filters hallucinations thro
 | `research-survey-main` skill | Live tutorial + orchestration (RUNBOOK is the SOT) |
 | `research-survey-init` skill | Scaffolds a workspace-standards workspace (10-unit numbering, CLAUDE.md 12-section, 7-layer harness — standard docs cited by path) |
 | `research-survey-run` skill | One category cycle: extract → summarize → triple-verify → organize |
+| wiki search/promote layer | Real tools (not just a contract): `wiki_index.py` (SQLite FTS5 index, or pure-python char-bigram BM25 fallback), `wiki_query.py` (FTS5-match ∪ bigram-BM25 union top-k, dangling-free wikilinks), `wiki_promote.py` (dry-run diff → `--apply` gate with frontmatter+citation lint, JSONL manifest). BM25 formula ported verbatim from the tax-wiki demo (ablation-verified) |
 | Root `CLAUDE.md` + `AGENTS.md` | Agent adapter — any agent (Codex etc.) runs the same RUNBOOK. **Variant opening**: if your first message is a research question, the agent answers bare (no files/web) and that answer becomes the bare-vs-grounded comparison material |
 | RUNBOOK §0.5 preflight | Probes OS/python and LLM CLIs (`command -v` / `Get-Command`, Windows + Unix commands both given) — only tools actually observed are offered as bare-LLM subjects; web-chat paste is the zero-CLI fallback |
 | RUNBOOK §3.5 output convention | Outputs go only to your workspace `artifacts/` or `40-drafts/` — never into the plugin folder; previous outputs are preserved under `artifacts/prev-<date>/`, not deleted |

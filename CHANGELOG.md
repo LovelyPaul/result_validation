@@ -2,6 +2,32 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.3.0] - 2026-07-20
+### Added
+- **wiki 검색·승격 레이어 실구현** — 지금까지 계약(phase_contracts §7·§9)만 있고 실행 도구가
+  없던 갭을 메운다. `skills/research-survey-run/scripts/`에 자립형 스크립트 3종 추가(전부 python3
+  표준 라이브러리·pyyaml 미사용·frontmatter 정규식 파싱·각 `--self-test` 내장):
+  - `wiki_index.py` — `20-knowledge-base/wiki/notes/*.md`를 검색 색인으로 빌드. FTS5 가용성을
+    이 머신 python에서 실측(`CREATE VIRTUAL TABLE ... USING fts5`) — 가용하면 SQLite FTS5
+    가상테이블(id/title/tags/body), 불가하면 순수 파이썬 문자 bigram BM25 단독 폴백. mode를
+    manifest.json·stdout에 명시. (실측 환경: sqlite 3.50.4 → FTS5 가용.)
+  - `wiki_query.py` — 질문 → FTS5 매치 채널(`bm25()` 랭킹) + 문자 bigram BM25 랭킹 채널 유니온
+    top-k → `wiki/queries/`에 근거 발췌 리포트. 존재 노트만 위키링크(dangling 0 불변식).
+    **BM25 수식·전처리(K1=1.2·B=0.75·`_BM25_STRIP`·`_bigrams`·idf·score·(-score,id) 정렬)는
+    tax-wiki 데모 `wiki/scripts/query.py`에서 그대로 이식** — ablation 검증 수식·임의 개선 금지.
+  - `wiki_promote.py` — 검증 통과 산출물(40-drafts·80-reports)을 wiki 정본으로 승격하는 게이트.
+    기본 dry-run(diff 미리보기), `--apply`는 승인 후에만. 노트 스키마 lint(frontmatter 필수키
+    `id/title/source` + 출처 인용 존재)를 코드로 강제해 "정본 직접 쓰기 금지" 계약을 집행,
+    승격 이력을 `wiki/promotion-manifest.jsonl`에 append.
+- **워크스페이스 템플릿 고도화**: `20-knowledge-base/wiki/{notes,queries}/` 스캐폴드(.gitkeep+README),
+  `00-system/data-dictionary.md`에 wiki 노트 frontmatter 스키마 추가, 템플릿 `CLAUDE.md` §10
+  도구(결정론)에 wiki 3스크립트 사용법 추가.
+### Changed
+- RUNBOOK [정리·지속] 단계·§3 확장 모듈을 wiki 실도구 흐름으로 갱신(계약 → 실행 가능).
+- `phase_contracts.md` §7(정리)·§9(승격)를 실도구(wiki_index/query/promote) 참조로 갱신.
+- README 2종(영·한) Features·동작 원리에 wiki 검색·승격 레이어 반영.
+- `plugin.json`·RUNBOOK frontmatter version 0.3.0.
+
 ## [0.2.1] - 2026-07-20
 ### Fixed (리뷰어 R1 수렴 지적 — 2종 REVISE 통합)
 - **RUNBOOK §3.5 예외 신설**: 현재 작업 폴더가 플러그인 폴더 자체(clone 루트)인 세션은 거기에
