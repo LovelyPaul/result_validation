@@ -184,8 +184,10 @@ def query(workspace, question, k=BM25_TOPK):
     # (-score, id) 결정 정렬. dangling 0 — 존재 id만.
     rrf = {}
     for ranking in (fts_hits, bm_hits):
+        seen_ch = set()   # 채널 내 중복 id 방어 — stale db 등으로 같은 id가 반복돼도 1회만 누산 (R2 이월 minor)
         for rank, i in enumerate(ranking, start=1):
-            if i in ids:
+            if i in ids and i not in seen_ch:
+                seen_ch.add(i)
                 rrf[i] = rrf.get(i, 0.0) + 1.0 / (RRF_K + rank)
     union = [i for i, _ in sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
 

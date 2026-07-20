@@ -16,10 +16,15 @@ English | [한국어](README.ko.md)
 /plugin marketplace add <owner>/gptaku-plugins   # or a local path
 /plugin install research-survey
 # restart Claude Code, then:
+/research-survey demo              # 5-10 min toy walkthrough on bundled samples (extract → wiki search → gate rejections → promote)
 /research-survey tutorial          # learn the pipeline live (~15 min)
 /research-survey init <topic>      # scaffold a standards-compliant workspace
 /research-survey run <category>    # run one full survey cycle
 ```
+
+**Bring your own papers**: `corpus_fetch.py --ids <arxiv-ids>` or `--query "<terms>" --max N`
+pulls titles/abstracts verbatim from the arXiv export API into the universal corpus schema
+(`--append` merges, skipping duplicate ids) — then edit the taxonomy dial and re-run classify.
 
 **Two ways to use:**
 1. **Marketplace install** (above) — the plugin ships its command/skills; the repo-root
@@ -49,7 +54,9 @@ back to a page in the paper (`— Table 1, p.6`) and filters hallucinations thro
 ## Features
 | Component | What |
 |---|---|
-| `/research-survey` command | Router: `tutorial` / `init` / `run` / `help` |
+| `/research-survey` command | Router: `tutorial` / `demo` / `init` / `run` / `help` |
+| `demo` walkthrough (`references/DEMO.md`) | Post-install toy run on bundled samples: scaffold → copy corpus+3 wiki notes → classify (7/15 extracted) → wiki search with cited excerpts → 2 gate-rejection demos (no-source, timeline tampering) → clean promote |
+| `corpus_fetch.py` | Pull your own papers from the arXiv export API (`--ids` / `--query --max`, verbatim title+abstract, `--append` dedup-merge) into the universal corpus schema |
 | `research-survey-main` skill | Live tutorial + orchestration (RUNBOOK is the SOT) |
 | `research-survey-init` skill | Scaffolds a workspace-standards workspace (10-unit numbering, CLAUDE.md 12-section, 7-layer harness — standard docs cited by path) |
 | `research-survey-run` skill | One category cycle: extract → summarize → triple-verify → organize |

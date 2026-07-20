@@ -1,6 +1,6 @@
 ---
 title: research-survey RUNBOOK (정본 대본)
-version: 0.3.0
+version: 0.4.0
 duration: 15-20분 (코어) + 확장
 role: 진행자(에이전트)가 이 대본을 읽고 라이브로 튜토리얼을 진행한다
 ---
@@ -199,7 +199,24 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
 - 실시간 분류·검색이 예상과 다르면, examples의 사전 캡처(편수·판정 수치)로 전환해 서사를 유지한다.
 - "지금은 미리 돌려둔 결과로 보겠습니다"라 정직히 알리고 진행. 라이브 실패를 숨기지 않는다.
 
+## §2.5 — 자기 주제로 바꾸기 (샘플 → 내 서베이)
+
+데모·튜토리얼의 전 과정은 파일 2개만 바꾸면 내 주제로 그대로 돈다:
+1. **다이얼 수정**: 워크스페이스 `00-system/taxonomy.json`의 카테고리를 관심 주제로 교체
+   (patterns/relevance_terms/noise_terms/threshold — 작성법은 `taxonomy_dial.md`).
+2. **논문 반입**: `corpus_fetch.py`로 원하는 논문을 범용 스키마로 가져온다(제목·초록은
+   arXiv export API 원문 verbatim — 손 편집 금지):
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/corpus_fetch.py" --workspace . --ids 2512.17776,2303.08896
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/corpus_fetch.py" --workspace . --query "hallucination detection LLM" --max 10 --append
+   ```
+   `--append`는 기존 코퍼스에 병합(중복 id 자동 스킵).
+3. **재추출**: `classify.py --workspace .` 재실행 → 편수 diff를 보고 다이얼을 조정한다
+   (§3 다이얼 조정 루프). 이후 요약→검증→승격은 §1 코어와 동일.
+
 ## §3 — 확장 모듈 (시간 남으면)
+- **toy 데모(`/research-survey demo`)**: 설치 직후 5~10분 자동 체험 — 정본 `DEMO.md`
+  (샘플 코퍼스 추출→위키 검색→검수 거부 2종→정상 승격).
 - **다이얼 조정 루프**: noise_terms/relevance_terms를 즉석에서 바꿔 재추출 → before/after 편수 diff.
 - **새 카테고리 추가**: taxonomy에 관심 주제 1개 추가 → 추출까지. "새 주제는 코드 변경 0".
 - **wiki 검색·승격 실연**: 검증 통과 요약을 `wiki_promote`로 정본 승격(dry-run→apply·출처 게이트),

@@ -17,10 +17,15 @@
 /plugin marketplace add <owner>/gptaku-plugins   # 또는 로컬 경로
 /plugin install research-survey
 # Claude Code 재시작 후:
+/research-survey demo              # 동봉 샘플로 5~10분 toy 체험 (추출 → 위키 검색 → 게이트 거부 → 승격)
 /research-survey tutorial          # 파이프라인 라이브 학습 (~15분)
 /research-survey init <주제>       # 표준 준수 워크스페이스 생성
 /research-survey run <카테고리>    # 한 카테고리 1사이클 실행
 ```
+
+**내 논문 가져오기**: `corpus_fetch.py --ids <arXiv id들>` 또는 `--query "<검색어>" --max N`이
+arXiv export API에서 제목·초록을 원문 그대로 범용 코퍼스 스키마로 반입한다(`--append`는 병합·
+중복 id 스킵) — 그다음 taxonomy 다이얼을 내 주제로 고치고 classify를 재실행하면 된다.
 
 **사용 모드 2종:**
 1. **마켓플레이스 설치**(위 방법) — 플러그인은 command/skill로 동작하며, 리포 루트의
@@ -50,7 +55,9 @@
 ## 구성
 | 컴포넌트 | 역할 |
 |---|---|
-| `/research-survey` 커맨드 | 라우터: `tutorial` / `init` / `run` / `help` |
+| `/research-survey` 커맨드 | 라우터: `tutorial` / `demo` / `init` / `run` / `help` |
+| `demo` 체험(`references/DEMO.md`) | 설치 직후 동봉 샘플 toy 완주: 스캐폴드 → 코퍼스+위키 노트 3개 복사 → classify(15편 중 7편 추출) → 근거 발췌 위키 검색 → 게이트 거부 시연 2종(출처 없음·Timeline 변조) → 정상 승격 |
+| `corpus_fetch.py` | 내 논문 반입 — arXiv export API에서 `--ids`/`--query --max`로 제목·초록 원문 verbatim 수집, `--append` 중복 스킵 병합(범용 코퍼스 스키마) |
 | `research-survey-main` 스킬 | 라이브 튜토리얼 + 오케스트레이션 (정본은 RUNBOOK) |
 | `research-survey-init` 스킬 | workspace-standards 워크스페이스 스캐폴딩(10단위 넘버링·CLAUDE.md 12섹션·하네스 7-layer — 표준 문서를 경로로 명시 참조) |
 | `research-survey-run` 스킬 | 한 카테고리 사이클: 추출 → 요약 → 3중검증 → 정리 |

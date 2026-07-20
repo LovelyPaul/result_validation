@@ -2,6 +2,31 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.4.0] - 2026-07-20
+### Added
+- **`/research-survey demo`** — toy 실행 워크플로우(설치 직후 5~10분 자동 체험). 정본
+  `references/DEMO.md`: ①워크스페이스 스캐폴드(대상 폴더 AskUserQuestion) ②샘플 코퍼스·
+  taxonomy·**위키 노트 3개** 자동 복사 ③classify 실행(관련 7편 추출 화면) ④wiki_index→
+  wiki_query 검색 시연(DEER 질문 → 근거 발췌) ⑤검수 거부 시연 2종(출처 없는 산출물 B8 거부·
+  Timeline 변조 E1 거부) ⑥정상 승격 dry-run→apply+manifest. 커맨드 라우팅 표에 demo 추가.
+- **샘플 위키 노트 3개 동봉**(템플릿 `20-knowledge-base/wiki/notes/`): deer-benchmark·
+  selfcheckgpt·llm-as-a-judge — 검증된 arXiv 초록만 근거로 작성(2분할·필수키·arXiv 출처 인용),
+  전건 promote lint 통과 실측. 설치 직후 검색 시연이 바로 되는 근거 데이터.
+- **`corpus_fetch.py`** (scripts/·stdlib only): arXiv export API로 `--ids` 또는 `--query --max`
+  → 범용 스키마 corpus.json 생성(제목·초록 API 원문 verbatim). `--append`는 기존 코퍼스 병합
+  (중복 id 스킵). `--self-test`는 네트워크 0(fixture 파싱·병합 검증). "누구나 원하는 논문을
+  가져올 수 있게"의 실행 경로.
+- **RUNBOOK §2.5 "자기 주제로 바꾸기"**: 다이얼 수정 + corpus_fetch 반입 + classify 재실행 흐름.
+### Fixed (R2 이월 minor 2건)
+- `wiki_query` RRF 루프에 채널 내 중복 id 방어(seen per channel) — stale db 대비 1회만 누산.
+- CHANGELOG [0.3.0]의 promote lint 필수키 문구를 최종 기준(`id/title/created/tags`)으로 교정.
+### Verified
+- 데모 E2E 실완주(임시 워크스페이스): ②복사→③classify 7편→④index 3노트·엣지 6·감사 클린,
+  query 1위 deer-benchmark→⑤B8 거부·E1 거부(각 exit 1·정본 미생성)→⑥dry-run·apply exit 0·
+  manifest 기록→승격 노트 재색인(델타 +1)·재검색 1위 확인.
+- 격리 CLAUDE_CONFIG_DIR 마켓플레이스 설치 실측: `marketplace add`(로컬 경로)✔ → `install`✔
+  (1회 EBUSY 후 재시도 성공 — Windows 파일 잠금 일시 현상) → `plugin list` enabled ✔.
+
 ## [0.3.0] - 2026-07-20
 ### Added
 - **wiki 검색·승격 레이어 실구현** — 지금까지 계약(phase_contracts §7·§9)만 있고 실행 도구가
@@ -19,7 +44,8 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
     tax-wiki 데모 `wiki/scripts/query.py`에서 그대로 이식** — ablation 검증 수식·임의 개선 금지.
   - `wiki_promote.py` — 검증 통과 산출물(40-drafts·80-reports)을 wiki 정본으로 승격하는 게이트.
     기본 dry-run(diff 미리보기), `--apply`는 승인 후에만. 노트 스키마 lint(frontmatter 필수키
-    `id/title/source` + 출처 인용 존재)를 코드로 강제해 "정본 직접 쓰기 금지" 계약을 집행,
+    `id/title/created/tags` + 출처 인용 존재 — 최종 A3 확장 기준·아래 증보 절)를 코드로 강제해
+    "정본 직접 쓰기 금지" 계약을 집행,
     승격 이력을 `wiki/promotion-manifest.jsonl`에 append.
 - **워크스페이스 템플릿 고도화**: `20-knowledge-base/wiki/{notes,queries}/` 스캐폴드(.gitkeep+README),
   `00-system/data-dictionary.md`에 wiki 노트 frontmatter 스키마 추가, 템플릿 `CLAUDE.md` §10
