@@ -8,9 +8,14 @@
   - source_pdf 표기 존재
 
 source-coverage 검수 (v0.5.0 P1-2 — `--corpus` 지정 시 활성):
-  - ① Evidence 인용 실재: Evidence 절의 수치(퍼센트·소수)와 인용 문구("…" 12자+)가
-    원문(--source-dir 의 PDF 추출 .txt 우선, 없으면 corpus.json abstract)에 substring으로
+  - ① Evidence 인용 실재: Evidence 절의 수치(퍼센트·소수·**정수 포함 전부** — R1)와 인용
+    문구("…" 12자+)가 원문(--source-dir 의 PDF 추출 .txt 우선, 없으면 corpus.json abstract)에
     실재하는지 grep 대조. 부재 = FAIL (발명 수치·오인용 차단 — 결정론만, LLM 채점 금지).
+    오탐 회피는 컨텍스트 창이 아니라 **마스킹+스코프**로: 인용 좌표(p.N·Table/Figure/§/
+    Section N·arXiv id·YYYY-MM-DD)와 행머리 목차 번호(`1. `·`2) `)를 마스킹한 뒤 Evidence
+    절 안에서만 추출. 연도형 4자리(1900~2099)는 초록 밖 메타데이터 유래가 흔해 제외.
+    원문 대조는 숫자 경계 매칭(999를 1999에 오매칭 금지)·소형 정수(≤12)는 영어 수사
+    (seven 등) 표기도 실재로 인정.
   - ② 키포인트 커버율: 원문 초록을 문장 단위 키포인트로 쪼개 요약이 각 키포인트의
     내용어(4자+ 단어)를 40% 이상 공유하면 커버로 판정. 커버율 < 임계(기본 0.6)면 WARN
     (경고 — exit 코드에는 불반영). 한글 요약이 영어 초록 용어를 인용 없이 완전 의역하면
@@ -43,6 +48,17 @@ EVIDENCE_SEC = re.compile(r"## Evidence(.*?)(?=\n## |\Z)", re.S)
 SOURCE_PDF_LINE = re.compile(r"source_pdf:\s*([^\s(]+)")
 PCT = re.compile(r"\d+(?:\.\d+)?(?=\s*%)")          # 94.2% → '94.2'
 DEC = re.compile(r"\b\d+\.\d+\b")                    # 0.514 등 소수 (arXiv id는 제외)
+INT = re.compile(r"(?<![\d.])\d+(?!\.?\d)")          # 정수 (R1 — 소수·id의 일부는 제외)
+# 인용 좌표 마스킹 — 수치 '주장'이 아닌 원문 좌표·메타 표기 (추출 전에 제거)
+CITE_COORD = re.compile(
+    r"arXiv[:\s]*\d{4}\.\d{4,5}(?:v\d+)?|\b\d{4}\.\d{4,5}(?:v\d+)?\b"   # arXiv id
+    r"|\d{4}-\d{2}-\d{2}"                                                # 날짜
+    r"|p\.\s*\d+|(?:Table|Figure|Fig\.|Section|§)\s*[\d.]*\d", re.IGNORECASE)
+LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.M)     # 행머리 목차·리스트 번호 (오탐원)
+YEAR_MIN, YEAR_MAX = 1900, 2099                      # 연도형 4자리 — 메타데이터 유래 오탐원
+WORD_NUMS = {"0": "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five",
+             "6": "six", "7": "seven", "8": "eight", "9": "nine", "10": "ten",
+             "11": "eleven", "12": "twelve"}         # 소형 정수 — 원문 영어 수사 표기 인정
 QUOTE = re.compile(r'"([^"\n]{12,})"|“([^”\n]{12,})”')   # 12자+ 인용 문구
 _WORD = re.compile(r"[A-Za-z가-힣]{4,}")
 _STOP = frozenset("""which their these those about there however while where with that this
@@ -74,17 +90,20 @@ def _norm(s):
 
 
 def extract_claim_numbers(evidence_text):
-    """Evidence 절에서 실재 대조할 수치 needle 추출 — 퍼센트·소수만(보수적: 정수는
-    목차·리스트 번호와 충돌해 오탐이 크다). arXiv id·§/Section/Table/Fig 인용 좌표는 제외."""
+    """Evidence 절에서 실재 대조할 수치 needle 추출 — 퍼센트·소수·정수 전부 (R1: 정수
+    전면 제외가 '999 datasets' 발명 정수를 놓쳤다). 오탐 회피는 마스킹으로: 인용 좌표
+    (p.N·Table/Figure/§/Section·arXiv id·날짜)와 행머리 목차 번호를 먼저 지운 뒤 추출.
+    연도형 4자리(1900~2099)는 초록 밖 메타데이터(발행연도) 유래가 흔해 제외."""
+    masked = CITE_COORD.sub(" ", evidence_text)
+    masked = LIST_MARKER.sub(" ", masked)
     needles = []
-    for rx in (PCT, DEC):
-        for m in rx.finditer(evidence_text):
+    for rx in (PCT, DEC, INT):
+        for m in rx.finditer(masked):
             tok = m.group(0)
             if ARXIV_FULL.fullmatch(tok):
-                continue   # arXiv id 형태(NNNN.NNNNN)는 수치 주장 아님
-            ctx = evidence_text[max(0, m.start() - 10):m.start()]
-            if "§" in ctx or "Section" in ctx or "Table" in ctx or "Fig" in ctx:
-                continue   # 원문 좌표 인용이지 수치 주장이 아님
+                continue   # arXiv id 형태(NNNN.NNNNN) 안전벨트 — 마스킹 누락 대비
+            if rx is INT and len(tok) == 4 and YEAR_MIN <= int(tok) <= YEAR_MAX:
+                continue   # 연도 표기
             if tok not in needles:
                 needles.append(tok)
     return needles
@@ -111,7 +130,12 @@ def check_evidence_grounding(text, source_text):
     src_fold = src_norm.casefold()
     fails = []
     for n in extract_claim_numbers(ev):
-        if n not in src_norm:
+        # 숫자 경계 매칭 — '999'가 '1999'·'999.5' 안에서 오매칭(거짓 PASS)되지 않게
+        found = re.search(rf"(?<![\d.]){re.escape(n)}(?![\d.])", src_norm)
+        if not found and n in WORD_NUMS:
+            # 소형 정수는 원문이 영어 수사로 쓴 경우(seven 등)도 실재로 인정
+            found = re.search(rf"\b{WORD_NUMS[n]}\b", src_fold)
+        if not found:
             fails.append(f"Evidence 수치 원문 부재: {n!r}")
     for q in extract_claim_quotes(ev):
         if q.casefold() not in src_fold:
@@ -291,6 +315,35 @@ def _self_test():
         _ABSTRACT)
     if len(g2) != 2 or "88.8" not in g2[0] or "outperforms" not in g2[1]:
         failures.append(f"부재 수치·인용 미탐지: {g2}")
+    # R1 단위: 정수 포함 추출 — 발명 정수는 잡고, 좌표·목차·날짜·연도는 마스킹/제외 (오탐 0)
+    ev2 = ("- 999 datasets 와 123 languages 로 확장 (p.4, Table 3)\n"
+           "1. Introduction 목차 항목\n"
+           "2) Methods 목차 항목\n"
+           "- 7 benchmarks 평가 · 2026-07-21 기록 · 2023년 발표 (Figure 2)\n")
+    nums2 = extract_claim_numbers(ev2)
+    if sorted(nums2) != ["123", "7", "999"]:
+        failures.append(f"R1 정수 needle 추출 오류: {sorted(nums2)} (기대 123·7·999)")
+    # R1 단위: 발명 정수 → FAIL
+    g3 = check_evidence_grounding("## Evidence\n- 999 datasets across 123 languages (p.2)\n",
+                                  _ABSTRACT)
+    if len(g3) != 2 or "999" not in g3[0] or "123" not in g3[1]:
+        failures.append(f"R1 발명 정수 미탐지: {g3}")
+    # R1 단위: 목차형 정수 + 실재 수치만 → 오탐 0
+    g4 = check_evidence_grounding(
+        "## Evidence\n1. first point (p.1)\n2. second point (p.2)\n- 94.2% 정확도 (Table 1)\n",
+        _ABSTRACT)
+    if g4:
+        failures.append(f"R1 목차형 정수 오탐: {g4}")
+    # R1 단위: 소형 정수의 영어 수사 표기 인정 — '7' vs 원문 'seven multilingual datasets'
+    g5 = check_evidence_grounding("## Evidence\n- 7 multilingual datasets 개선 (p.3)\n",
+                                  _ABSTRACT)
+    if g5:
+        failures.append(f"R1 수사 표기 인정 실패: {g5}")
+    # R1 단위: 숫자 경계 매칭 — 원문 '1999'가 needle '999'의 거짓 PASS가 되면 안 됨
+    g6 = check_evidence_grounding("## Evidence\n- 999 samples 사용 (p.5)\n",
+                                  "The corpus contains 1999 samples in total.")
+    if len(g6) != 1 or "999" not in g6[0]:
+        failures.append(f"R1 숫자 경계 매칭 오류: {g6}")
     # 단위: 커버율 — 전문 포함 요약=1.0 / 무관 요약=낮음
     cov_hi, _ = keypoint_coverage(_ABSTRACT, _GOOD_MD)
     cov_lo, unc = keypoint_coverage(_ABSTRACT, _BAD_MD)

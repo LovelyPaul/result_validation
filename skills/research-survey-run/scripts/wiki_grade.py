@@ -53,6 +53,9 @@ def grade_retrieval(workspace, questions, k):
         _out, union, _ch = query(workspace, q, k)   # wiki_query와 같은 코드 경로 (이중 구현 금지)
         top1 = union[0] if union else None
         exp_note = notes.get(exp)
+        # gold 무결성 fail-closed (R1): expected_evidence 누락·빈 문자열·공백만이면 'in body'
+        # 검사 전에 위반이다 — '' in body 는 항상 True라 조용히 통과하는 구멍(codex 재현).
+        ev_phrase = (g.get("expected_evidence") or "").strip()
         results.append({
             "question": q,
             "expected_top1": exp,
@@ -60,7 +63,7 @@ def grade_retrieval(workspace, questions, k):
             "top1_hit": top1 == exp,
             "in_topk": exp in union,
             "rank": (union.index(exp) + 1) if exp in union else None,
-            "evidence_in_note": bool(exp_note and g.get("expected_evidence", "") in exp_note["body"]),
+            "evidence_in_note": bool(ev_phrase) and bool(exp_note) and ev_phrase in exp_note["body"],
         })
     n = len(results)
     hits = sum(r["top1_hit"] for r in results)
@@ -100,37 +103,50 @@ def grade_gates(workspace, ev_dir, corpus_path, source_dir=None):
         text = f.read_text(encoding="utf-8")
         fm, body = parse_frontmatter(text)
         r = promote(str(workspace), str(f), apply=False)   # dry-run — 부작용 0
-        entry = {"file": f.name, "id": r["id"], "ev_type": fm.get("ev_type", "")}
+        # ev_expect: reject(기본 — 매설, 게이트가 잡아야 정상) | pass(clean 대조군 —
+        # 게이트가 통과시켜야 정상: 과차단 감시. R1 claude-1 minor)
+        expected = "pass" if fm.get("ev_expect", "reject") == "pass" else "reject"
+        entry = {"file": f.name, "id": r["id"], "ev_type": fm.get("ev_type", ""),
+                 "expected": expected}
         if r["problems"]:
             entry.update(verdict="rejected", layer="promote",
                          reasons=[str(p) for p in r["problems"]])
-            results.append(entry)
-            continue
-        # ② promote lint 통과분 → source-coverage 층 (Compiled Truth 본문만 검사)
-        src_text, _abstract, why = resolve_source(text, corpus_by_id, source_dir)
-        if src_text is None:
-            entry.update(verdict="unchecked", layer="source-coverage",
-                         reasons=[f"원문 해결 불가 — {why}"])
         else:
-            ct, _tl = split_sections(body)
-            fails = check_evidence_grounding(
-                "## Evidence\n" + (ct if ct is not None else body), src_text)
-            if fails:
-                entry.update(verdict="rejected", layer="source-coverage",
-                             reasons=[str(x) for x in fails])
+            # ② promote lint 통과분 → source-coverage 층 (Compiled Truth 본문만 검사)
+            src_text, _abstract, why = resolve_source(text, corpus_by_id, source_dir)
+            if src_text is None:
+                entry.update(verdict="unchecked", layer="source-coverage",
+                             reasons=[f"원문 해결 불가 — {why}"])
             else:
-                entry.update(verdict="passed", layer="source-coverage",
-                             reasons=["게이트 체인이 잡지 못함 — 매설 유형·검사 규칙을 점검하라"])
+                ct, _tl = split_sections(body)
+                fails = check_evidence_grounding(
+                    "## Evidence\n" + (ct if ct is not None else body), src_text)
+                if fails:
+                    entry.update(verdict="rejected", layer="source-coverage",
+                                 reasons=[str(x) for x in fails])
+                elif expected == "pass":
+                    entry.update(verdict="passed", layer="source-coverage",
+                                 reasons=["대조군 통과 — 게이트 과차단 없음(정상)"])
+                else:
+                    entry.update(verdict="passed", layer="source-coverage",
+                                 reasons=["게이트 체인이 잡지 못함 — 매설 유형·검사 규칙을 점검하라"])
+        entry["as_expected"] = (entry["verdict"] == "rejected") == (expected == "reject")
         results.append(entry)
 
-    n = len(results)
-    rejected = sum(1 for r in results if r["verdict"] == "rejected")
+    seeded = [r for r in results if r["expected"] == "reject"]
+    controls = [r for r in results if r["expected"] == "pass"]
+    rejected = sum(1 for r in seeded if r["verdict"] == "rejected")
     return {
-        "n": n,
+        "n": len(results),
+        "seeded": len(seeded),
         "rejected": rejected,
         "passed": sum(1 for r in results if r["verdict"] == "passed"),
         "unchecked": sum(1 for r in results if r["verdict"] == "unchecked"),
-        "reject_rate": round(rejected / n, 4) if n else None,
+        # 거부율 분모는 매설(expected=reject)만 — 대조군을 섞으면 수치가 조용히 희석된다
+        "reject_rate": round(rejected / len(seeded), 4) if seeded else None,
+        "controls": len(controls),
+        "controls_passed": sum(1 for r in controls if r["verdict"] == "passed"),
+        "overblocked_controls": [r["file"] for r in controls if r["verdict"] == "rejected"],
         "per_note": results,
     }
 
@@ -168,11 +184,15 @@ def _print_summary(report, out):
         print(f"  [{mark}] {q['question'][:44]} → 기대 {q['expected_top1']} / "
               f"실측 {q['got_top1']} (rank {q['rank']})")
     if r["gold_evidence_missing"]:
-        print(f"  ⚠ gold 무결성 위반 — 기대 근거 문구가 노트 본문에 없음: {r['gold_evidence_missing']}")
-    print(f"gate: 매설 {g['n']} · 거부 {g['rejected']} ({g['reject_rate'] * 100:.1f}%) · "
-          f"통과 {g['passed']} · 미판정 {g['unchecked']}")
+        print(f"  ⚠ gold 무결성 위반 — 기대 근거 문구가 비었거나 노트 본문에 없음: {r['gold_evidence_missing']}")
+    rate = f"{g['reject_rate'] * 100:.1f}%" if g["reject_rate"] is not None else "판정 불가(매설 0건)"
+    print(f"gate: 매설 {g['seeded']} · 거부 {g['rejected']} ({rate}) · "
+          f"대조군 {g['controls']} 통과 {g['controls_passed']} · 미판정 {g['unchecked']}")
+    if g["overblocked_controls"]:
+        print(f"  ⚠ 대조군 과차단(정상 노트를 거부): {g['overblocked_controls']}")
     for e in g["per_note"]:
-        print(f"  [{e['verdict']}] {e['file']} ({e['ev_type']}) @ {e['layer']}: {e['reasons'][0][:80]}")
+        mark = "" if e["as_expected"] else " ⚠기대 불일치"
+        print(f"  [{e['verdict']}]{mark} {e['file']} ({e['ev_type']}) @ {e['layer']}: {e['reasons'][0][:80]}")
 
 
 def _self_test():
@@ -202,6 +222,9 @@ def _self_test():
              "expected_evidence": "합성 데이터 증강"},
             {"question": "합성 데이터 증강 기법", "expected_top1": "alpha",
              "expected_evidence": "본문에 존재하지 않는 문구"},
+            # R1: 공백만인 evidence — '' in body 항상 True 구멍의 회귀 케이스 (위반이어야 함)
+            {"question": "의료 영상 분할 증강", "expected_top1": "beta",
+             "expected_evidence": "   "},
         ]}, ensure_ascii=False), encoding="utf-8")
         # 코퍼스: ev 소스 검사용 초록 (88.8%만 실재 — 94.2%는 발명)
         corpus = ws / CORPUS_REL
@@ -221,29 +244,36 @@ def _self_test():
             "ev_type: invented-number\n---\n## Compiled Truth\n\n정확도 94.2%를 달성 (arXiv:1234.56789 abstract).\n\n"
             "## Timeline\n\n- 2026-07-21 매설\n", encoding="utf-8")
         (ev / "ev-clean.md").write_text(
-            "---\nid: ev-clean\ntitle: EV Clean\ncreated: 2026-07-21\ntags: [ev]\nsource: arXiv:1234.56789\n---\n"
+            "---\nid: ev-clean\ntitle: EV Clean\ncreated: 2026-07-21\ntags: [ev]\nsource: arXiv:1234.56789\n"
+            "ev_type: clean-control\nev_expect: pass\n---\n"
             "## Compiled Truth\n\n정확도 88.8%를 보고 (arXiv:1234.56789 abstract).\n\n"
-            "## Timeline\n\n- 2026-07-21 매설\n", encoding="utf-8")
+            "## Timeline\n\n- 2026-07-21 대조군\n", encoding="utf-8")
 
         report, out = run(str(ws), gold, ev, corpus)
         r, g = report["retrieval"], report["gate"]
         if not out.exists():
             failures.append("리포트 JSON 미생성")
-        if r["top1_hits"] != 2 or r["n"] != 3:
+        if r["top1_hits"] != 3 or r["n"] != 4:
             failures.append(f"retrieval 적중 집계 오류: hits={r['top1_hits']} n={r['n']}")
         if r["topk_recall"] != 1.0:
             failures.append(f"top-k recall 오류(alpha는 rank>1이어도 top-k 내 기대): {r['topk_recall']}")
-        if r["gold_evidence_missing"] != ["alpha"]:
-            failures.append(f"gold 무결성 위반 미탐지: {r['gold_evidence_missing']}")
+        # R1: 본문 미존재(alpha) + 공백만 evidence(beta) 둘 다 무결성 위반으로 잡혀야 한다
+        if r["gold_evidence_missing"] != ["alpha", "beta"]:
+            failures.append(f"gold 무결성 위반 미탐지(빈 evidence 포함): {r['gold_evidence_missing']}")
         by = {e["file"]: e for e in g["per_note"]}
         if by["ev-no-source.md"]["verdict"] != "rejected" or by["ev-no-source.md"]["layer"] != "promote":
             failures.append(f"출처없음 promote 거부 실패: {by['ev-no-source.md']}")
         if by["ev-num.md"]["verdict"] != "rejected" or by["ev-num.md"]["layer"] != "source-coverage":
             failures.append(f"발명수치 coverage 거부 실패: {by['ev-num.md']}")
-        if by["ev-clean.md"]["verdict"] != "passed":
-            failures.append(f"대조군 판정 오류(놓침은 passed로 드러나야): {by['ev-clean.md']}")
-        if g["rejected"] != 2 or g["reject_rate"] != round(2 / 3, 4):
-            failures.append(f"거부율 집계 오류: {g['rejected']} {g['reject_rate']}")
+        if not (by["ev-clean.md"]["verdict"] == "passed" and by["ev-clean.md"]["expected"] == "pass"
+                and by["ev-clean.md"]["as_expected"]):
+            failures.append(f"대조군(ev_expect: pass) 판정 오류: {by['ev-clean.md']}")
+        if g["seeded"] != 2 or g["rejected"] != 2 or g["reject_rate"] != 1.0:
+            failures.append(f"거부율 집계 오류(분모=매설만): seeded={g['seeded']} "
+                            f"rejected={g['rejected']} rate={g['reject_rate']}")
+        if g["controls"] != 1 or g["controls_passed"] != 1 or g["overblocked_controls"]:
+            failures.append(f"대조군 집계 오류: {g['controls']}/{g['controls_passed']}/"
+                            f"{g['overblocked_controls']}")
         # 정본·manifest 무변조 (dry-run 불변식)
         if (ws / NOTES_REL / "ev-num.md").exists() or (ws / "20-knowledge-base/wiki/promotion-manifest.jsonl").exists():
             failures.append("채점이 정본/manifest를 변조함 (dry-run 위반)")
@@ -299,7 +329,7 @@ def main():
         bad.append("gold 무결성 위반 (기대 근거 문구가 노트 본문에 없음)")
     if a.min_top1 is not None and report["retrieval"]["top1_rate"] < a.min_top1:
         bad.append(f"1위 적중률 {report['retrieval']['top1_rate']} < 임계 {a.min_top1}")
-    if a.min_reject is not None and report["gate"]["reject_rate"] < a.min_reject:
+    if a.min_reject is not None and (report["gate"]["reject_rate"] or 0.0) < a.min_reject:
         bad.append(f"매설 거부율 {report['gate']['reject_rate']} < 임계 {a.min_reject}")
     if bad:
         print("FAIL: " + " · ".join(bad))

@@ -92,7 +92,9 @@ confidence: 1.0               # 선택 — 직접 인용 1.0 / 요약 추출 0.7
   채점기가 실재를 검사하고, 미존재면 fail-closed로 실패시킨다(채점 기준 자체의 오염 차단).
 
 **오류 매설 노트(ev)** — `40-drafts/ev/*.md` (샘플: 발명 수치·문구 오인용·출처 없음·
-Timeline 변조·필수키 누락 5유형): 검수 게이트 체인이 **거부해야 정상**인 노트들.
-frontmatter `ev_type: <유형>`으로 유형을 선언한다(리포트 표시용). 매설 노트는 절대
+Timeline 변조·필수키 누락 5유형 + 정상 대조군 1개): 검수 게이트 체인이 **거부해야 정상**인
+노트들. frontmatter `ev_type: <유형>`으로 유형을 선언한다(리포트 표시용). 예외적으로
+`ev_expect: pass`를 선언한 노트는 **clean 대조군** — 게이트가 통과시켜야 정상이며 거부되면
+과차단(overblocked)으로 리포트된다(거부율 분모에는 넣지 않는다). 매설·대조군 노트는 절대
 `wiki_promote --apply`로 승격하지 않는다 — `wiki_grade`가 dry-run으로만 사용한다.
 채점 리포트는 `70-analysis/wiki-grade-report.json`.

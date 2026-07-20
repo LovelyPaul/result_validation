@@ -20,8 +20,9 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   arXiv 초록에 부재함을 실측 확인). DEMO ⑦ 품질 채점(선택)·RUNBOOK 품질 채점 절·
   data-dictionary 채점 데이터 스키마 문서화.
 - **P1-2 source-coverage 검수** (`verify_summaries.py --corpus [--source-dir]
-  [--coverage-threshold]`): ①Evidence 인용 실재 — Evidence 절의 수치(퍼센트·소수 —
-  정수는 오탐 커 보수적 제외)와 인용 문구(12자+)가 원문에 substring 실재하는지 grep 대조,
+  [--coverage-threshold]`): ①Evidence 인용 실재 — Evidence 절의 수치(퍼센트·소수·정수 —
+  기본 구현은 정수 보수 제외였고 같은 릴리스 R1에서 마스킹+스코프로 정수까지 확장, 아래
+  Fixed R1)와 인용 문구(12자+)가 원문에 substring 실재하는지 grep 대조,
   부재=FAIL(발명 수치·오인용 차단). 원문은 `--source-dir`의 PDF 추출 .txt 우선, 없으면
   corpus abstract(+제목). **원문 미해결(arXiv id 표기 없음·corpus 미등재)=FAIL**(fail-closed —
   조용한 검사 생략은 매설 우회 루프홀). ②키포인트 커버율 — 초록을 문장 단위 키포인트로
@@ -52,13 +53,31 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   self-test.
 - DEMO frontmatter version 0.5.0 동기화(0.4.0에 머물러 있던 것).
 
+### Fixed (R1 — reviewer-codex REVISE 2건 + claude-1 minor 2건, master 전건 수용)
+- **(codex) `wiki_grade` gold 무결성 빈 문자열 루프홀**: expected_evidence가 누락·빈 문자열·
+  공백만이면 `'' in body`가 항상 True라 무결성 검사를 조용히 통과하던 구멍(리뷰어 재현) —
+  strip 후 비어 있으면 'in body' 검사 전에 위반으로 카운트. 공백만 evidence self-test 회귀
+  케이스 + CLI 부정 프로브(빈 evidence gold → exit 1) 실측.
+- **(codex) `verify_summaries` 발명 정수 미탐지**: 정수 전면 제외가 '999 datasets'류 발명
+  정수를 놓치던 것 — 정수 포함 전수 검사로 확장하되 오탐은 컨텍스트 창이 아니라
+  **마스킹+스코프**로 회피(인용 좌표 p.N/Table/Figure/§/Section/arXiv id/날짜 마스킹·행머리
+  목차 번호 마스킹·연도형 4자리 제외·숫자 경계 매칭으로 999↔1999 오매칭 차단·소형 정수
+  ≤12는 영어 수사(seven 등) 표기 인정). 단위 self-test 5건 추가.
+- **(claude-1 minor) clean 대조군 동봉**: `40-drafts/ev/ev-clean-control.md` — 모든 수치·
+  인용이 원문 초록에 실재하는 정상 노트(`ev_expect: pass` 선언). 게이트가 통과시켜야
+  정상 — **과차단(overblocked) 감시**. wiki_grade가 expected/as_expected를 판정·거부율
+  분모는 매설(expected=reject)만으로 유지(대조군 혼입에 의한 수치 희석 방지).
+- **(claude-1 minor) DEMO 인트로 단계 번호 정합**: 인트로의 개념 나열 번호(⑤품질 채점)가
+  본문 단계 번호(⑦)와 어긋나던 것 — 인트로가 본문 단계 번호(③④⑤⑥⑦)를 직접 참조하도록 수정.
+
 ### Verified
 - self-test 6종 전건 PASS·exit 0: wiki_index(fts5_available=True)·wiki_query·wiki_promote·
-  corpus_fetch·verify_summaries(신설)·wiki_grade(신설).
-- grade E2E(격리 워크스페이스·동봉 샘플): **retrieval 1위 적중 12/12(100%)·top-5 recall
-  100%·gold 무결성 위반 0 / 매설 거부 5/5(100%)** — promote 층 3건(출처 없음 B8·Timeline
-  변조 E1·필수키 누락 A3) + source-coverage 층 2건(발명 수치 '94.2' 원문 부재·오인용 문구
-  원문 부재). `--min-top1 0.9 --min-reject 0.9` 게이트 exit 0.
+  corpus_fetch·verify_summaries(신설)·wiki_grade(신설). R1 반영 후 재실행 전건 PASS 유지.
+- grade E2E(격리 워크스페이스·동봉 샘플, R1 재채점): **retrieval 1위 적중 12/12(100%)·top-5
+  recall 100%·gold 무결성 위반 0 / 매설 거부 5/5(100%)·clean 대조군 1/1 통과·과차단 0·
+  미판정 0(정확 분리)** — promote 층 3건(출처 없음 B8·Timeline 변조 E1·필수키 누락 A3) +
+  source-coverage 층 2건(발명 수치 '94.2' 원문 부재·오인용 문구 원문 부재).
+  `--min-top1 0.9 --min-reject 0.9` 게이트 exit 0. 빈 evidence gold 부정 프로브 exit 1.
 - 데모 코어 E2E 실완주: classify 7편(오탐 0) → query 1위 deer-benchmark → 타입드 엣지 포함
   노트 승격(dry-run diff → apply → manifest 기록) → 델타 재색인(+1·supports 엣지 rel 기록·
   confidence 0.7 note_confidence 기록·건강도 1줄) → 재검색 1위 = 방금 승격 노트.
