@@ -198,9 +198,20 @@ ollama run <ollama list의 모델 이름> '<위 지시문>'
 - **다이얼 조정 루프**: noise_terms/relevance_terms를 즉석에서 바꿔 재추출 → before/after 편수 diff.
 - **새 카테고리 추가**: taxonomy에 관심 주제 1개 추가 → 추출까지. "새 주제는 코드 변경 0".
 - **wiki 검색·승격 실연**: 검증 통과 요약을 `wiki_promote`로 정본 승격(dry-run→apply·출처 게이트),
-  `wiki_index`로 색인(FTS5 가용 시 FTS5+bm25(), 불가 시 순수 파이썬 bigram BM25 폴백),
-  `wiki_query`로 한국어·영어 질문을 던져 유니온 top-k 근거 발췌를 되찾는다. 존재 노트만
-  위키링크(dangling 0). BM25 수식은 wiki-demo query.py에서 이식(ablation 검증 수식).
+  `wiki_index`로 색인(FTS5 가용 시 FTS5+bm25(), 불가 시 순수 파이썬 bigram BM25 폴백 + 링크
+  엣지 추출·orphan/broken 감사), `wiki_query`로 한국어·영어 질문을 던져 두 채널 RRF(K=60)
+  융합 top-k 근거 발췌를 되찾는다. 존재 노트만 위키링크(dangling 0). BM25 수식은 wiki-demo
+  query.py에서 이식(ablation 검증 수식).
+  - **wiki 운영 원칙**(gbrain·knowledge-manager 증류 — LLM-wiki 규칙):
+    - **brain-first(C3)**: 질문을 받으면 외부 검색(웹·논문 DB) 전에 **내부 위키를 먼저**
+      `wiki_query`로 검색한다 — 이미 검증해 쌓은 정본이 1차 출처다.
+    - **컴파일 분리(B1)**: raw→wiki는 수집→보강→draft→lint→저장 단계를 분리한다.
+      추출과 저장을 한 덩어리로 하지 않는다 — draft(40-drafts)를 거쳐 `wiki_promote` 게이트로만.
+    - **추측 금지(E5)**: 노트 콘텐츠는 도구 응답(원문 실측·스크립트 출력)으로만 확정한다.
+    - 노트는 Compiled Truth(현재값·REWRITE)+Timeline(append-only) 2분할 — 스키마는
+      워크스페이스 `00-system/data-dictionary.md`.
+  - **향후 확장(로드맵 — v0.3.0 미구현·stdlib 범위 밖)**: vector 임베딩 채널·시맨틱 캐시·
+    토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·엣지 confidence decay.
 - **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름).
 - **다중 노드 협업**: roles.md의 master·worker·reviewer·inspector가 어떻게 심의하는지(대규모 서베이).
 

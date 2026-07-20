@@ -44,9 +44,10 @@
 - 도구: 플러그인 동봉 `skills/research-survey-run/scripts/wiki_index.py`·`wiki_query.py`(자립·표준 라이브러리).
 - 입력: 검증된 요약(정본 승격분). 처리: `wiki_index.py --workspace .`로 `20-knowledge-base/wiki/notes/`를
   검색 색인으로 빌드(FTS5 가용 시 FTS5+bm25(), 불가 시 순수 파이썬 문자 bigram BM25 폴백 — 실측 후 mode 명시),
-  `wiki_query.py --workspace . "<질문>"`로 FTS5 매치 채널 + bigram BM25 채널 유니온 top-k 검색 리포트를
-  `wiki/queries/`에 생성(존재 노트만 위키링크 — dangling 0). Notion 등 외부 목적지는 선택(툴 제한 대응 — 분할 등).
-- 출력: 검색 색인(`wiki/.index/`) + 검색 리포트(`wiki/queries/`) + (선택) 외부 페이지·인덱스.
+  `wiki_query.py --workspace . "<질문>"`로 FTS5 매치 채널 + bigram BM25 채널을 RRF(K=60)로 융합한
+  top-k 검색 리포트를 `wiki/queries/`에 생성(존재 노트만 위키링크 — dangling 0). 색인 시 링크 엣지
+  자동 추출(zero-LLM)·orphan/broken 감사·델타 색인. Notion 등 외부 목적지는 선택(툴 제한 대응 — 분할 등).
+- 출력: 검색 색인(`wiki/.index/` — wiki.db·edges.json·manifest.json) + 검색 리포트(`wiki/queries/`) + (선택) 외부 페이지·인덱스.
 - 게이트: 미작성 스켈레톤 자동 skip. 외부 업로드 시 API 회독으로 카운트 대조. 일괄 조작은 명시 ID만.
 
 ## 8. 인사이트 추출
@@ -57,8 +58,9 @@
 - 도구: 플러그인 동봉 `skills/research-survey-run/scripts/wiki_promote.py`(자립·표준 라이브러리).
 - 입력: 검증 통과 산출물(40-drafts 요약·80-reports 서베이). 처리: 서베이 초안 → cold-read 라운드
   (REVISE 반영) → `wiki_promote.py --workspace . <산출물.md>`로 승격. 기본 dry-run(diff 미리보기),
-  `--apply`는 사람 승인 후에만. 노트 스키마 lint(frontmatter 필수키 `id/title/source` + 출처 인용 존재)를
-  코드로 강제 — 미충족 시 승격 거부(garbage-in 차단).
+  `--apply`는 사람 승인 후에만. 노트 스키마 lint(frontmatter 필수키 `id/title/created/tags` + 출처 인용
+  + Compiled Truth/Timeline 2분할)를 코드로 강제 — 미충족 시 승격 거부(garbage-in 차단). 갱신은
+  Compiled Truth 교체 + Timeline append만(기존 Timeline 수정 감지 시 거부), 제목/ID dedup 내장.
 - 출력: 정본 노트(`20-knowledge-base/wiki/notes/`) + 승격 이력 manifest(`wiki/promotion-manifest.jsonl`, JSONL append).
 - 게이트: **정본 직접 쓰기 금지** — `wiki_promote`가 유일 통로. dry-run → 사람 승인 → `--apply`.
 

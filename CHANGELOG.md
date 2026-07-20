@@ -22,6 +22,24 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
 - **워크스페이스 템플릿 고도화**: `20-knowledge-base/wiki/{notes,queries}/` 스캐폴드(.gitkeep+README),
   `00-system/data-dictionary.md`에 wiki 노트 frontmatter 스키마 추가, 템플릿 `CLAUDE.md` §10
   도구(결정론)에 wiki 3스크립트 사용법 추가.
+### Added (증보 — LLM-wiki 운영 규칙 반영, gbrain·knowledge-manager 증류 [즉시] 항목)
+- **A2 페이지 2분할 노트 스키마**: 노트 = `## Compiled Truth`(항상 현재값 — 갱신 시 통째
+  REWRITE) + `## Timeline`(append-only). `wiki_promote` lint가 2분할 구조를 강제하고,
+  **A3 frontmatter 필수키**를 `id/title/created/tags`로 확장(+B8 출처 인용 필수 유지).
+  data-dictionary에 스키마·태그 규칙(A5)·링크 규칙(A6) 문서화.
+- **`wiki_promote` 게이트 강화**: B4 dedup(같은 id=갱신, 다른 id·같은 제목=거부),
+  B5 갱신 병합(Compiled Truth 교체 + Timeline append), E1 Timeline 불변(기존 항목 수정·삭제
+  감지 시 승격 거부).
+- **`wiki_index` 링크 그래프**: B6 zero-LLM 링크 추출(정규식 `[[..]]` → `.index/edges.json`
+  엣지 테이블, src·dst·exists·extracted_at) + D2 감사(orphan·broken link 리포트) +
+  C4 델타 색인(노트 sha256 대조 — 변경분만 FTS5 행 갱신, 무변경 시 재색인 생략).
+- **`wiki_query` RRF 융합(C1)**: FTS5·bigram BM25 두 채널을 단순 유니온에서
+  **Reciprocal Rank Fusion(K=60)**으로 교체 — 결정론·(-score,id) 정렬. BM25 수식 자체는 불변.
+- **RUNBOOK wiki 운영 원칙**: brain-first(C3 — 외부 검색 전 위키 먼저)·컴파일 단계 분리(B1)·
+  추측 금지(E5) 명시.
+### Design (로드맵 — 문서 기재만·v0.3.0 미구현)
+- vector 임베딩 채널·시맨틱 캐시·토큰 예산 하드캡·GraphRAG(2-hop 라우팅)·cron 자율 정비·
+  엣지 confidence decay — stdlib 플러그인 범위 밖, RUNBOOK §3 "향후 확장"에 명시.
 ### Changed
 - RUNBOOK [정리·지속] 단계·§3 확장 모듈을 wiki 실도구 흐름으로 갱신(계약 → 실행 가능).
 - `phase_contracts.md` §7(정리)·§9(승격)를 실도구(wiki_index/query/promote) 참조로 갱신.

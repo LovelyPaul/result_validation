@@ -4,11 +4,19 @@
 입력: 워크스페이스의 40-drafts/ 요약 또는 80-reports/ 서베이 (.md).
 정본: <workspace>/20-knowledge-base/wiki/notes/<id>.md.
 
-★"정본 직접 쓰기 금지"(phase_contracts §9)를 코드로 강제한다:
-  - 기본은 dry-run — diff 미리보기만 출력하고 정본을 건드리지 않는다.
-  - --apply 는 승인 후에만. 승격 전 노트 스키마 lint(frontmatter 필수키 + 출처 인용 존재)를
-    강제하고, lint 실패 시 승격을 거부한다(garbage-in 차단).
-  - 승격 이력을 manifest(JSONL)에 append 기록 — 되짚기 가능한 감사선.
+LLM-wiki 운영 규칙(gbrain·knowledge-manager 증류 — LLM_WIKI_RULES_DISTILLED.md) 반영:
+  - A2 페이지 2분할: 노트 = 상단 `## Compiled Truth`(항상 현재값 — 갱신 시 통째 REWRITE) +
+    하단 `## Timeline`(append-only — 기존 항목 수정·삭제 절대 금지). lint가 두 섹션을 강제.
+  - A3 frontmatter 필수키: id·title·created·tags. + B8 출처 필수(source 프론트매터 또는
+    본문 페이지/표/arXiv/DOI/URL 인용).
+  - B4 dedup: 저장 전 제목/ID 중복 체크 — 같은 id는 갱신(B5), 다른 id·같은 제목은 거부
+    (갱신이면 기존 id로, 신규면 제목 구분).
+  - B5 갱신 규칙: 기존 노트면 Compiled Truth 교체 + Timeline append.
+  - E1 Timeline 불변: 기존 Timeline 항목의 수정·삭제가 감지되면 승격 거부(append만 허용).
+  - E3/E5: 전 연산 zero-LLM 결정론(정규식·diff) — 도구 응답만이 사실.
+
+"정본 직접 쓰기 금지"(phase_contracts §9)를 코드로 강제: 기본 dry-run(diff 미리보기),
+--apply 는 승인 후에만. 승격 이력은 manifest(JSONL) append.
 
 의존: python3 표준 라이브러리만 (pyyaml 금지). 자체 검사: `python3 wiki_promote.py --self-test`.
 """
@@ -25,12 +33,14 @@ WIKI_REL = "20-knowledge-base/wiki"
 NOTES_REL = f"{WIKI_REL}/notes"
 MANIFEST_REL = f"{WIKI_REL}/promotion-manifest.jsonl"
 
-REQUIRED_KEYS = ("id", "title", "source")   # 노트 스키마 필수 frontmatter 키
-# 출처 인용 신호: source 프론트매터가 비어있어도 본문에 페이지/표/arXiv/DOI 인용이 있으면 통과
+REQUIRED_KEYS = ("id", "title", "created", "tags")   # A3 필수 frontmatter 키
+# B8 출처 인용 신호: source 프론트매터가 비어도 본문에 페이지/표/arXiv/DOI/URL 인용이 있으면 통과
 _CITATION_RE = re.compile(r"(p\.?\s?\d+|Table\s+\d+|Figure\s+\d+|arXiv:\S+|doi:\S+|https?://)", re.I)
 
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.S)
 _KV_RE = re.compile(r"([A-Za-z_][\w-]*):\s*(.*)$")
+_CT_HEAD = re.compile(r"^##\s+Compiled Truth\s*$", re.M)
+_TL_HEAD = re.compile(r"^##\s+Timeline\s*$", re.M)
 
 
 def parse_frontmatter(text):
@@ -55,16 +65,35 @@ def parse_frontmatter(text):
     return fm, text[m.end():]
 
 
+def split_sections(body):
+    """A2 2분할 파싱 → (compiled_truth, timeline). 섹션 헤딩 부재 시 None."""
+    ct_m = _CT_HEAD.search(body)
+    tl_m = _TL_HEAD.search(body)
+    if not ct_m or not tl_m or tl_m.start() < ct_m.start():
+        return None, None
+    compiled = body[ct_m.end():tl_m.start()].strip()
+    timeline = body[tl_m.end():].strip()
+    return compiled, timeline
+
+
+def _tl_lines(timeline):
+    """Timeline을 비교 가능한 비어있지 않은 줄 목록으로 정규화."""
+    return [ln.rstrip() for ln in (timeline or "").splitlines() if ln.strip()]
+
+
 def lint_note(text):
-    """노트 스키마 lint → 위반 목록(빈 목록=통과). 필수키 + 출처 인용 존재."""
+    """노트 스키마 lint → 위반 목록(빈 목록=통과). A3 필수키 + B8 출처 + A2 2분할."""
     fm, body = parse_frontmatter(text)
     problems = []
     for key in REQUIRED_KEYS:
         if not fm.get(key):
-            problems.append(f"frontmatter 필수키 누락/빈값: {key}")
+            problems.append(f"frontmatter 필수키 누락/빈값: {key} (A3)")
     has_source = bool(fm.get("source")) or bool(_CITATION_RE.search(body))
     if not has_source:
-        problems.append("출처 인용 없음 (source 프론트매터 또는 본문에 페이지/표/arXiv/DOI/URL 인용 필요)")
+        problems.append("출처 인용 없음 — source 프론트매터 또는 본문 페이지/표/arXiv/DOI/URL 인용 필요 (B8)")
+    ct, tl = split_sections(body)
+    if ct is None:
+        problems.append("페이지 2분할 위반 — '## Compiled Truth' 다음 '## Timeline' 섹션 필수 (A2)")
     return problems, fm
 
 
@@ -79,40 +108,97 @@ def _diff(old, new, path):
         fromfile=f"a/{path}", tofile=f"b/{path}"))
 
 
+def _find_title_dup(notes_dir, title, exclude_id):
+    """B4 dedup — 다른 id로 같은 제목의 기존 노트가 있으면 그 id를 반환."""
+    norm = (title or "").strip().lower()
+    if not norm:
+        return None
+    for p in sorted(Path(notes_dir).glob("*.md")):
+        if p.stem == exclude_id:
+            continue
+        fm, _ = parse_frontmatter(p.read_text(encoding="utf-8"))
+        if (fm.get("title") or "").strip().lower() == norm:
+            return fm.get("id") or p.stem
+    return None
+
+
+def _merge_update(existing_text, incoming_text):
+    """B5+E1 갱신 병합 → (merged_text, problem|None).
+    Compiled Truth = incoming으로 REWRITE. Timeline은 append-only — **엄격 규칙**:
+    incoming TL은 기존 TL 전체를 글자 그대로(prefix) 포함하고 그 뒤에 새 항목만 덧붙여야 한다.
+    기존 항목의 변경뿐 아니라 **생략(=삭제)도 E1 위반**으로 거부한다 — "새 항목만 제출" 허용
+    분기는 변조본(기존과 한 글자라도 다른 사본)을 신규 항목으로 오인하는 루프홀이라 금지
+    (2026-07-20 E2E 실측: 변조 항목이 교집합 0으로 append 통과 — 이 규칙으로 봉쇄).
+    """
+    in_fm_raw = _FM_RE.match(incoming_text)
+    fm_block = incoming_text[:in_fm_raw.end()] if in_fm_raw else ""
+    _, in_body = parse_frontmatter(incoming_text)
+    _, ex_body = parse_frontmatter(existing_text)
+    in_ct, in_tl = split_sections(in_body)
+    ex_ct, ex_tl = split_sections(ex_body)
+    ex_lines, in_lines = _tl_lines(ex_tl), _tl_lines(in_tl)
+
+    if ex_lines and in_lines[:len(ex_lines)] != ex_lines:
+        return None, ("Timeline 수정 감지 — 기존 Timeline 항목은 수정·삭제·생략할 수 없다"
+                      "(append-only). 정본의 기존 Timeline 전체를 그대로 포함하고 그 뒤에 "
+                      "새 항목만 덧붙여 다시 제출하라 (E1)")
+    merged_lines = in_lines
+
+    merged = (fm_block + "## Compiled Truth\n\n" + (in_ct or "").strip()
+              + "\n\n## Timeline\n\n" + "\n".join(merged_lines) + "\n")
+    return merged, None
+
+
 def promote(workspace, src_file, apply=False):
-    """단일 산출물 승격. 반환: {id, action, problems, diff, manifest_line?}."""
+    """단일 산출물 승격. 반환: {id, action, problems, diff, dest, src, manifest_line?}."""
     ws = Path(workspace)
     src = Path(src_file)
     if not src.exists():
         raise SystemExit(f"입력 파일 없음: {src}")
     text = src.read_text(encoding="utf-8")
-    problems, _ = lint_note(text)
+    problems, fm = lint_note(text)
     nid = _target_id(text, src)
     notes_dir = ws / NOTES_REL
     dest = notes_dir / f"{nid}.md"
-    old = dest.read_text(encoding="utf-8") if dest.exists() else ""
-    diff = _diff(old, text, f"{NOTES_REL}/{nid}.md")
-    action = ("update" if dest.exists() else "create") if not problems else "rejected"
 
+    # B4 dedup: 다른 id·같은 제목 → 거부(갱신이면 기존 id로, 신규면 제목 구분)
+    if not problems and notes_dir.exists():
+        dup = _find_title_dup(notes_dir, fm.get("title"), nid)
+        if dup:
+            problems.append(f"제목 중복 — 기존 노트 id={dup} 와 같은 제목. "
+                            f"갱신이면 id를 {dup} 로 맞추고, 신규 개념이면 제목을 구분하라 (B4)")
+
+    final_text = text
+    if not problems and dest.exists():
+        # B5: Compiled Truth REWRITE + Timeline append (E1 위반 시 거부)
+        merged, e1 = _merge_update(dest.read_text(encoding="utf-8"), text)
+        if e1:
+            problems.append(e1)
+        else:
+            final_text = merged
+
+    old = dest.read_text(encoding="utf-8") if dest.exists() else ""
+    diff = _diff(old, final_text, f"{NOTES_REL}/{nid}.md")
+    action = ("update" if dest.exists() else "create") if not problems else "rejected"
     result = {"id": nid, "action": action, "problems": problems,
               "diff": diff, "dest": str(dest), "src": str(src)}
 
     if problems:
-        return result  # lint 실패 → 승격 거부 (apply 여부 무관)
+        return result  # lint/dedup/E1 실패 → 승격 거부 (apply 여부 무관)
     if not apply:
         result["action"] = f"dry-run:{action}"
         return result
 
-    # --apply: 정본 쓰기 + manifest append
+    # --apply: 정본 쓰기 + manifest append (E2 감사선)
     notes_dir.mkdir(parents=True, exist_ok=True)
-    dest.write_text(text, encoding="utf-8")
+    dest.write_text(final_text, encoding="utf-8")
     line = {
         "ts": str(date.today()),
         "id": nid,
         "action": action,
         "src": str(src),
         "dest": str(dest),
-        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "sha256": hashlib.sha256(final_text.encode("utf-8")).hexdigest(),
     }
     manifest = ws / MANIFEST_REL
     manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -122,57 +208,84 @@ def promote(workspace, src_file, apply=False):
     return result
 
 
+def _note(nid, title, ct, tl, source="arXiv:1, p.2"):
+    return (f"---\nid: {nid}\ntitle: {title}\ncreated: 2026-07-20\ntags: [t1, t2]\n"
+            f"source: {source}\n---\n## Compiled Truth\n\n{ct}\n\n## Timeline\n\n{tl}\n")
+
+
 def _self_test():
     import tempfile
     failures = []
 
-    # 단위: lint — 출처 없는 노트 거부, 있는 노트 통과
-    bad = "---\nid: x\ntitle: T\n---\n출처 없는 본문.\n"
-    good = "---\nid: x\ntitle: T\nsource: arXiv:1, p.2\n---\n근거 있는 본문.\n"
-    if not lint_note(bad)[0]:
-        failures.append("lint: 출처 없는 노트를 통과시킴")
-    if lint_note(good)[0]:
-        failures.append(f"lint: 정상 노트를 거부함: {lint_note(good)[0]}")
+    # lint: A3 필수키·B8 출처·A2 2분할
+    if not lint_note("---\nid: x\ntitle: T\n---\n본문.\n")[0]:
+        failures.append("lint: created/tags/출처/2분할 없는 노트를 통과시킴")
+    if lint_note(_note("x", "T", "내용 (p.3)", "- 2026-07-20 작성"))[0]:
+        failures.append(f"lint: 정상 노트를 거부: {lint_note(_note('x','T','내용 (p.3)','- v'))[0]}")
 
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)
         drafts = ws / "40-drafts"
         drafts.mkdir(parents=True)
-        src = drafts / "note1.md"
-        src.write_text(
-            "---\nid: note1\ntitle: Note One\nsource: arXiv:2401.1, Table 2, p.4\n---\n"
-            "핵심 결과: Entity F1 39.11 (Table 1, p.6).\n", encoding="utf-8")
 
         # dry-run: 정본 미생성
-        r = promote(str(ws), str(src), apply=False)
-        dest = ws / NOTES_REL / "note1.md"
-        if dest.exists():
-            failures.append("dry-run인데 정본이 생성됨 (정본 직접 쓰기 금지 위반)")
-        if not r["action"].startswith("dry-run"):
-            failures.append(f"dry-run action 이상: {r['action']}")
-        if not r["diff"]:
-            failures.append("dry-run diff 비어있음")
+        src = drafts / "n1.md"
+        src.write_text(_note("n1", "Note One", "F1 39.11 (Table 1, p.6)", "- 2026-07-20 초기 승격"),
+                       encoding="utf-8")
+        promote(str(ws), str(src), apply=False)
+        if (ws / NOTES_REL / "n1.md").exists():
+            failures.append("dry-run인데 정본 생성 (직접 쓰기 금지 위반)")
 
-        # apply: 정본 생성 + manifest append
-        r2 = promote(str(ws), str(src), apply=True)
-        if not dest.exists():
-            failures.append("apply인데 정본 미생성")
-        manifest = ws / MANIFEST_REL
-        if not manifest.exists() or not manifest.read_text(encoding="utf-8").strip():
+        # apply: create + manifest
+        r = promote(str(ws), str(src), apply=True)
+        if r["action"] != "create" or not (ws / NOTES_REL / "n1.md").exists():
+            failures.append(f"apply create 실패: {r['action']}")
+        if not (ws / MANIFEST_REL).exists():
             failures.append("manifest JSONL 미기록")
-        else:
-            rec = json.loads(manifest.read_text(encoding="utf-8").strip().splitlines()[-1])
-            if rec["id"] != "note1" or "sha256" not in rec:
-                failures.append(f"manifest 레코드 이상: {rec}")
 
-        # 출처 없는 산출물은 apply여도 거부
-        badsrc = drafts / "bad.md"
-        badsrc.write_text("---\nid: bad\ntitle: Bad\n---\n출처 없음.\n", encoding="utf-8")
-        r3 = promote(str(ws), str(badsrc), apply=True)
-        if r3["action"] != "rejected":
-            failures.append(f"출처 없는 산출물을 승격함: {r3['action']}")
-        if (ws / NOTES_REL / "bad.md").exists():
-            failures.append("lint 실패 산출물이 정본에 쓰임 (garbage-in 차단 실패)")
+        # B5 갱신: CT REWRITE + TL append(기존 TL 전체 + 새 항목 형태 — 엄격 규칙)
+        src2 = drafts / "n1-update.md"
+        src2.write_text(_note("n1", "Note One", "F1 42.0 (Table 2, p.7) — 개정",
+                              "- 2026-07-20 초기 승격\n- 2026-07-21 재검증 갱신"),
+                        encoding="utf-8")
+        r2 = promote(str(ws), str(src2), apply=True)
+        merged = (ws / NOTES_REL / "n1.md").read_text(encoding="utf-8")
+        if r2["action"] != "update" or "F1 42.0" not in merged or "F1 39.11" in merged.split("## Timeline")[0]:
+            failures.append(f"B5 CT REWRITE 실패: {r2['action']}")
+        if "- 2026-07-20 초기 승격" not in merged or "- 2026-07-21 재검증 갱신" not in merged:
+            failures.append("B5 TL append 실패 (기존/신규 항목 누락)")
+
+        # E1-a: 기존 Timeline 항목 변조 → 거부
+        src3 = drafts / "n1-tamper.md"
+        src3.write_text(_note("n1", "Note One", "무엇이든 (p.1)",
+                              "- 2026-07-20 초기 승격(변조됨)\n- 2026-07-21 재검증 갱신"),
+                        encoding="utf-8")
+        r3 = promote(str(ws), str(src3), apply=True)
+        if r3["action"] != "rejected" or not any("E1" in p for p in r3["problems"]):
+            failures.append(f"E1 변조 미탐지: {r3['action']} {r3['problems']}")
+
+        # E1-b: 기존 Timeline 생략(새 항목만 제출) → 거부 (2026-07-20 E2E 루프홀 회귀 방지)
+        src3b = drafts / "n1-omit.md"
+        src3b.write_text(_note("n1", "Note One", "무엇이든 (p.1)", "- 2026-07-22 새 항목만 제출"),
+                         encoding="utf-8")
+        r3b = promote(str(ws), str(src3b), apply=True)
+        if r3b["action"] != "rejected" or not any("E1" in p for p in r3b["problems"]):
+            failures.append(f"E1 생략 미탐지: {r3b['action']} {r3b['problems']}")
+
+        # B4: 다른 id·같은 제목 → 거부
+        src4 = drafts / "n2.md"
+        src4.write_text(_note("n2", "Note One", "다른 내용 (p.1)", "- 2026-07-21 작성"), encoding="utf-8")
+        r4 = promote(str(ws), str(src4), apply=True)
+        if r4["action"] != "rejected" or not any("B4" in p for p in r4["problems"]):
+            failures.append(f"B4 제목 중복 미탐지: {r4['action']} {r4['problems']}")
+
+        # 출처 없는 산출물 거부(B8)
+        src5 = drafts / "bad.md"
+        src5.write_text("---\nid: bad\ntitle: Bad\ncreated: 2026-07-20\ntags: [x]\n---\n"
+                        "## Compiled Truth\n\n출처 없음\n\n## Timeline\n\n- x\n", encoding="utf-8")
+        r5 = promote(str(ws), str(src5), apply=True)
+        if r5["action"] != "rejected" or (ws / NOTES_REL / "bad.md").exists():
+            failures.append(f"B8 출처 게이트 실패: {r5['action']}")
 
     if failures:
         print("SELF-TEST FAIL:")
@@ -196,7 +309,7 @@ def main():
         ap.error("src 인자가 필요합니다 (또는 --self-test)")
     r = promote(a.workspace, a.src, apply=a.apply)
     if r["problems"]:
-        print(f"승격 거부 ({r['id']}) — lint 위반:")
+        print(f"승격 거부 ({r['id']}) — 게이트 위반:")
         for p in r["problems"]:
             print("  -", p)
         sys.exit(1)

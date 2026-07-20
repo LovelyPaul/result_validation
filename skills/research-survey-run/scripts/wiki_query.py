@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""wiki_query — 질문 → (FTS5 매치 채널 + 문자 bigram BM25 랭킹 채널) 유니온 top-k → 리포트.
+"""wiki_query — 질문 → (FTS5 매치 채널 + 문자 bigram BM25 랭킹 채널) RRF 융합 top-k → 리포트.
 
-두 채널을 유니온한다:
+두 채널을 RRF(Reciprocal Rank Fusion, K=60)로 융합한다 — 다채널 하이브리드 규칙
+(LLM_WIKI_RULES_DISTILLED.md C1 · 단순 유니온보다 우월·결정론):
   ① FTS5 매치 채널   : .index/wiki.db 가 있으면 MATCH + bm25()로 랭킹 (SQLite 내장).
   ② bigram BM25 채널 : 노트 본문을 문자 bigram으로 BM25 랭킹 — 수식·전처리는 wiki-demo
     wiki/scripts/query.py 를 그대로 이식(ablation으로 recall 검증된 수식·임의 개선 금지).
@@ -62,6 +63,7 @@ def parse_frontmatter(text):
 
 BM25_K1, BM25_B, BM25_TOPK = 1.2, 0.75, 10
 _BM25_STRIP = re.compile(r"[\s「」『』()\[\],.·ㆍ:;'\"?!〈〉<>①-⑮]")
+RRF_K = 60   # C1 다채널 융합 상수 (Reciprocal Rank Fusion — LLM_WIKI_RULES_DISTILLED.md C1)
 
 
 def _bigrams(text):
@@ -171,27 +173,28 @@ def query(workspace, question, k=BM25_TOPK):
     fts_hits = fts5_top(ws / INDEX_REL / "wiki.db", question, k)
     bm_hits = bm25_top(question, docs, k)
 
-    # 유니온 top-k: 두 채널 순서보존 인터리브(FTS5 우선, 이어서 bigram). dangling 0 — 존재 id만.
-    union = []
-    seen = set()
-    for src in (fts_hits, bm_hits):
-        for i in src:
-            if i in ids and i not in seen:
-                union.append(i)
-                seen.add(i)
-    union = union[:k]
+    # C1 RRF 융합(K=60): 두 채널 랭킹을 Reciprocal Rank Fusion으로 결합 — 단순 유니온보다
+    # 우월·결정론(LLM_WIKI_RULES_DISTILLED.md C1). score(d)=Σ 1/(K+rank_i(d)), 동점은
+    # (-score, id) 결정 정렬. dangling 0 — 존재 id만.
+    rrf = {}
+    for ranking in (fts_hits, bm_hits):
+        for rank, i in enumerate(ranking, start=1):
+            if i in ids:
+                rrf[i] = rrf.get(i, 0.0) + 1.0 / (RRF_K + rank)
+    union = [i for i, _ in sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
 
-    ch = "fts5+bigram" if Path(ws / INDEX_REL / "wiki.db").exists() else "bigram-only"
+    ch = "fts5+bigram(rrf)" if Path(ws / INDEX_REL / "wiki.db").exists() else "bigram-only"
     lines = [
         "---",
         f"question: {json.dumps(question, ensure_ascii=False)}",
         f"created: {date.today()}",
         f"channels: {ch}",
+        f"fusion: rrf(k={RRF_K})",
         f"fts5_hits: {json.dumps(fts_hits, ensure_ascii=False)}",
         f"bigram_hits: {json.dumps(bm_hits, ensure_ascii=False)}",
         "---\n",
         f"# 위키 쿼리 — {question}\n",
-        f"채널: {ch} · 유니온 top-{k}\n",
+        f"채널: {ch} · RRF(K={RRF_K}) 융합 top-{k}\n",
         "## 매칭 노트 (근거 발췌)",
     ]
     if union:
@@ -262,7 +265,7 @@ def _self_test():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="wiki 쿼리 — FTS5 매치 + bigram BM25 유니온")
+    ap = argparse.ArgumentParser(description="wiki 쿼리 — FTS5 매치 + bigram BM25 RRF(K=60) 융합")
     ap.add_argument("question", nargs="?", help="자연어 질문")
     ap.add_argument("--workspace", default=".", help="워크스페이스 루트 (기본: 현재 폴더)")
     ap.add_argument("-k", "--topk", type=int, default=BM25_TOPK, help=f"top-k (기본 {BM25_TOPK})")
@@ -274,7 +277,7 @@ def main():
         ap.error("question 인자가 필요합니다 (또는 --self-test)")
     out, union, ch = query(a.workspace, a.question, a.topk)
     print(f"리포트: {out}")
-    print(f"채널: {ch} · 유니온 {len(union)}건: {', '.join(union) or '(없음)'}")
+    print(f"채널: {ch} · RRF(K={RRF_K}) 융합 {len(union)}건: {', '.join(union) or '(없음)'}")
 
 
 if __name__ == "__main__":
