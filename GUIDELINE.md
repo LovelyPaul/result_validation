@@ -80,4 +80,8 @@
 
 - 이 repo: README.md(개요)·skills/research-survey-main/references/{RUNBOOK.md, TEAM_COMPARE.md, DEMO.md}·CHANGELOG.md(릴리스 이력)
 - 분석·리포트(pack round/): COMPARATIVE_ANALYSIS_v040.md(3대 리포 비교)·FIELD_TEST_REPORT_v040.md(필드 테스트)·LLM_WIKI_RULES_DISTILLED.md(gbrain·km 규칙 증류)
-- 스터디 정본: improve_wiki/gpters23_intro/0_PLAN_STUDY_.md(스터디 프레임·할루시네이션 3유형·4주 커리큘럼)
+- 스터디 정본: improve_wiki/gpters23_intro/0_PLAN_STUDY_.md(실존 확인·v0.8.0 커리큘럼 가이드가
+  따른 정본 — 스터디 프레임·할루시네이션 3유형·4주 커리큘럼). ※별도 버전으로 gpters23/
+  제출용-리서치하네스2기_correct.md 계열이 존재하며 주차 제목이 미세하게 다르다(예: 2주차
+  0_PLAN_STUDY_는 "…·스킬 분해" 포함, _correct는 미포함) — v0.8.0 week 가이드는 0_PLAN_STUDY_
+  기준이되 인용 표기는 _correct와의 차이를 단서로 남겼다.
