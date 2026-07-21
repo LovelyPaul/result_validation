@@ -2,6 +2,14 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+> **기여 규칙(문서 명령) — 재발 차단**: 가이드류·워크스페이스 문서(RUNBOOK·DEMO·AGENTS·week
+> 가이드 등)의 **실행 명령은 등록 slash route(`/research-survey …`) 또는 "플러그인 스킬이
+> 실행" 표현으로만** 쓴다. 사용자 워크스페이스 PATH에 없는 내부 스크립트(`*.py`)를 bare
+> 이름·직접 경로로 실행하라고 지시하지 않는다(치환 `${CLAUDE_PLUGIN_ROOT}`도 사용자 파일에선
+> 안 풀림). 이 계열 결함이 3회 재발(v0.4.1 RUNBOOK python3 → v0.7.1 AGENTS 경로 → v0.8.0 week
+> 가이드)해 규칙으로 박제한다. 신규 가이드 작성 시 fenced 명령을 임시 워크스페이스에서 route/
+> executable로 resolve되는지 확인할 것.
+
 ## [0.8.0] - 2026-07-22
 
 ### Added (4주 커리큘럼 + 진행 스킬 — 처음 시작한 사람이 단계별로, 오너 승인)
@@ -22,6 +30,20 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   워크스페이스에 복사하지 않는다(drift 0·경량·10-unit 무손상). 대신 템플릿 `AGENTS.md`
   세션 시작 '다음 액션'에 `/research-survey curriculum` 진입점 추가(v0.7.1 교훈 — 실행 가능
   경로만). GUIDELINE.md §6 실습 시나리오에 커리큘럼 트랙 1줄 연계.
+
+### Fixed (R1 — reviewer-codex REVISE major 1 + claude-1 minor 1)
+- **(major·codex, v0.7.1 동일 계열 3회째) week 가이드 실행 명령 route/스킬 경유화**: week01의
+  bare `corpus_fetch.py` fenced 블록·week03의 `wiki_grade … --min-…`(유니코드 말줄임표 포함)·
+  week04의 inline `corpus_fetch --since --append`가 사용자 워크스페이스 PATH/plugin bin에서
+  resolve되지 않아 "복붙 실행 가능" 계약과 어긋났다. 전 가이드의 실행 명령을 **등록 route
+  (`/research-survey run·demo·team-compare·curriculum`)나 "플러그인 스킬이 실행" 표현으로 교체**
+  (v0.7.1 AGENTS.md 방식 — 직접 스크립트 호출 지시 0), 유니코드 말줄임표 제거. arXiv id·검색어는
+  사용자가 제공하는 **데이터**로 제시하고 실행은 스킬이 담당하도록 상호작용 흐름으로 전환.
+  SKILL 진행 원칙·호출 동작에 "실행은 등록 route/스킬 경유만" 재확인. 재발 차단 규칙을 이
+  CHANGELOG 상단에 상시 기여 규칙으로 명문화.
+- **(minor·claude-1) week02 정본 제목 인용 교정**: 헤더 인용을 스터디 정본 원문
+  "지식 창고 + 검수 기준(리뷰 패널·검증 게이트)"으로 맞추고 '스킬 분해'는 가이드의 확장
+  표현임을 단서.
 
 ### Changed
 - `plugin.json`·RUNBOOK·DEMO frontmatter version 0.8.0. README 2종 Features에 curriculum 추가.

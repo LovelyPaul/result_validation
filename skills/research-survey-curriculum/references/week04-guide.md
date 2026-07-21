@@ -52,5 +52,5 @@
 
 ## 마무리
 4주 커리큘럼 완주 — 내 도메인의 검증 가능한 검수 하네스를 갖췄습니다. 이후에는 30일 감사·
-Open Questions 환류·지속 서베이(`corpus_fetch --since --append`)로 운영 루프를 돌리면 됩니다.
-`/research-survey help`로 전체 커맨드를 다시 볼 수 있어요. 수고하셨습니다.
+Open Questions 환류·지속 서베이(제출일 델타 반입 — research-survey-run 스킬이 실행)로 운영
+루프를 돌리면 됩니다. `/research-survey help`로 전체 커맨드를 다시 볼 수 있어요. 수고하셨습니다.

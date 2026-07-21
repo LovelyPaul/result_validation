@@ -31,17 +31,17 @@
   다음 액션을 안내한다.
 - **산출물**: `00-system/taxonomy.json`(관심 주제 다이얼 시드)·`PROJECT_STATUS.md`·12섹션 CLAUDE.md.
 
-### 3. 내 논문 반입 (corpus_fetch) — 자기 주제로 전환
-- RUNBOOK §2.5 "자기 주제로 바꾸기" 절차. arXiv id 목록 또는 검색어로 제목·초록을 원문
-  그대로 범용 코퍼스로 가져온다(제목·초록은 arXiv export API verbatim — 손 편집 금지):
-  ```
-  # id 목록
-  corpus_fetch.py --workspace . --ids 2512.17776,2303.08896
-  # 검색어 + 최대 편수 (기존 코퍼스에 병합은 --append)
-  corpus_fetch.py --workspace . --query "hallucination detection LLM" --max 10 --append
-  ```
-  (실제 실행은 플러그인 research-survey-run 스킬이 담당한다 — 위는 그 스킬이 내부에서 돌리는
-  명령의 형태다. 반입 레코드에는 `source_grade: api_summary`·`retrieved_at`이 함께 기록된다.)
+### 3. 내 논문 반입 — 자기 주제로 전환
+- RUNBOOK §2.5 "자기 주제로 바꾸기" 절차를 따른다. **논문 반입은 플러그인 research-survey-run
+  스킬이 실행한다** — 사용자는 원하는 **arXiv id 목록**(예: `2512.17776, 2303.08896`)이나
+  **검색어**(예: `hallucination detection LLM`)를 알려주면 된다. 그러면 스킬이 플러그인 내부
+  도구를 정확한 경로·인자로 돌려 제목·초록을 원문 그대로(arXiv export API verbatim — 손 편집
+  금지) 범용 코퍼스(`60-data/corpus.json`)로 가져온다.
+- 진입은 자연어로("이 주제 논문 반입해줘 — 검색어는 <내 검색어>")나 `/research-survey run <카테고리>`
+  흐름 안에서 이뤄진다. 기존 코퍼스에 이어 붙이는 병합(중복 id 스킵)·제출일 델타 필터도
+  스킬이 지원한다. 반입 레코드에는 `source_grade`(api_summary)·`retrieved_at`이 함께 기록된다.
+  ★사용자 워크스페이스에서 내부 스크립트를 직접 bare 이름으로 실행하려 하지 마라 — PATH에
+  없다. 항상 등록 커맨드나 스킬 경유로 실행한다.
 
 ### 4. 다이얼 조정 + 결정론 분류 (classify)
 - `00-system/taxonomy.json`의 카테고리를 내 주제로 맞춘 뒤 한 사이클 실행:
