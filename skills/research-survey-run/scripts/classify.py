@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: corpus] 결정론 분류·랭킹 — 독립(상호 import 없음)
 """범용 결정론 분류기 — 관심 주제(taxonomy 다이얼)로 논문 코퍼스를 다중라벨 분류·랭킹.
 
 플러그인 자립형: 표준 라이브러리만 사용. ICML 전용 필드(poster_id·icml_url·_oral)에 비결합 —

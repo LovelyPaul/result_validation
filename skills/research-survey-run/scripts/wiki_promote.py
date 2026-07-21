@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: wiki] 승격 게이트(dry-run→apply·lint) — wiki_grade가 import
 """wiki_promote — 검증 통과 산출물을 wiki 정본으로 승격하는 게이트.
 
 입력: 워크스페이스의 40-drafts/ 요약 또는 80-reports/ 서베이 (.md).

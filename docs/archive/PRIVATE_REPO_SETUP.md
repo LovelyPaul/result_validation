@@ -1,5 +1,9 @@
 # Private 레포 등록 명령 세트 (HanEol-Lee77)
 
+> ⚠ **아카이브(v0.6.0~) — 용도 소멸.** repo가 공개로 전환되어 이 private 등록 절차는 더 이상
+> 필요하지 않다. 이력 보존을 위해 삭제하지 않고 `docs/archive/`로 옮겨 둔 참고용 문서다.
+> 현행 설치 안내는 `docs/INSTALL_MARKETPLACE.md`를 따른다.
+
 > 로컬 준비는 완료 상태다: git init + 커밋(v0.1.0) 완료, author/repo 필드 = HanEol-Lee77,
 > .gitignore(pyc·settings.local.json 제외) 적용, `claude plugin validate` ✔.
 > 아래 **①②는 외부 발행(레포 생성·push)이라 오너가 직접 실행**한다. ③④는 설치·검증.

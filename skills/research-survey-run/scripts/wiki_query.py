@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: wiki] RRF 검색 — wiki_index를 import(형제 모듈 co-location 의존)
 """wiki_query — 질문 → (FTS5 매치 채널 + 문자 bigram BM25 랭킹 채널) RRF 융합 top-k → 리포트.
 
 두 채널을 RRF(Reciprocal Rank Fusion, K=60)로 융합한다 — 다채널 하이브리드 규칙

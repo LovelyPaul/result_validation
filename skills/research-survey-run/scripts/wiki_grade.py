@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: wiki] 평가 하네스 — wiki_query·wiki_promote·verify_summaries를 import(교차 기능군)
 """wiki_grade — retrieval·검수 게이트 평가 하네스 (wiki-demo gold+매설 패턴 이식).
 
 "정보를 잘 가져오는지·검수가 잘 되는지"를 일화가 아니라 수치로 만든다:

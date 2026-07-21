@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: corpus] arXiv 반입·--since 델타 — 독립(상호 import 없음)
 """corpus_fetch — arXiv export API에서 논문을 받아 범용 코퍼스 스키마로 반입.
 
 "누구나 원하는 논문을 가져올 수 있게": arXiv id 목록 또는 검색어로 논문 메타데이터

@@ -2,6 +2,24 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.6.0] - 2026-07-21 (진행 중)
+
+### Changed (P0 — repo 구조 개편, RESTRUCTURE_PLAN.md 옵션1 승인·집행)
+- **문서 정돈**: `INSTALL_MARKETPLACE.md` → `docs/`, `PRIVATE_REPO_SETUP.md` → `docs/archive/`
+  (공개 전환으로 용도 소멸 — 비가역 삭제 대신 아카이브 이동·`git mv`로 이력 보존·아카이브
+  배너 1줄 추가). 링크 참조 전수 스캔: 실참조는 CHANGELOG(이력·불변)뿐·라이브 링크 0.
+- **scripts 기능군 논리 구획**: 7종 각 상단에 `[기능군: wiki|corpus|verify]` docstring 헤더
+  1줄 부여(동작 무변경). 물리 위치는 유지 — 상호 import 결합(wiki_query→wiki_index,
+  wiki_grade→wiki_query/wiki_promote/verify_summaries)이 co-location에 의존하기 때문.
+  물리 분리(옵션2)는 차기 메이저 재검토 항목으로 RESTRUCTURE_PLAN §6에 보존.
+- **README 2종**: 기여자용 "Scripts" 그룹표 추가(wiki/corpus/verify + v0.6.0 team 예약 행).
+- **개편 매핑**: INSTALL_MARKETPLACE.md→docs/INSTALL_MARKETPLACE.md ·
+  PRIVATE_REPO_SETUP.md→docs/archive/PRIVATE_REPO_SETUP.md.
+### Verified (P0)
+- self-test 6종 전건 PASS·exit0(헤더 주석이 sys.path 형제 import 무손상 실증) · 데모 코어
+  E2E(classify 7편→index 3노트→query 1위 deer-benchmark) · grade E2E(적중 12/12·거부 5/5·
+  exit0) · `claude plugin validate` exit0.
+
 ## [0.5.0] - 2026-07-21
 
 ### Added (비교 분석 P1 5건 — gbrain·knowledge-manager·wiki-demo 대조 격차 해소, 오너 승인)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: verify] 요약 검수·source-coverage — wiki_grade가 resolve_source·check_evidence_grounding import
 """범용 요약 결정론 검수 — 3중 검증의 1차(자가검증)·2차(독립 실측) 공용 도구.
 
 각 요약 md가 규격을 지키는지 결정론으로 검사한다(눈대중 대체):

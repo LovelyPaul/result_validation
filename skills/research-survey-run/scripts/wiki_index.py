@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# [기능군: wiki] 색인·감사·타입드 엣지 — 참조: wiki_query·wiki_promote·wiki_grade
 """wiki_index — 워크스페이스 wiki 노트를 검색 색인 + 링크 그래프로 빌드.
 
 대상: <workspace>/20-knowledge-base/wiki/notes/*.md (id/title/tags/body).
