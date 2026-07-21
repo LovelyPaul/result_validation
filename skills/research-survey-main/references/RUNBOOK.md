@@ -1,6 +1,6 @@
 ---
 title: research-survey RUNBOOK (정본 대본)
-version: 0.6.0
+version: 0.7.0
 duration: 15-20분 (코어) + 확장
 role: 진행자(에이전트)가 이 대본을 읽고 라이브로 튜토리얼을 진행한다
 ---
@@ -276,11 +276,22 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/classify.py" -
   ```
   - 리포트 항목: **orphan**(연결 0 노트)·**broken link**(대상 부재 위키링크)·**stale**
     (frontmatter `updated`(없으면 `created`) 나이 30일 초과 — 날짜 파싱 불가는 fail-closed로
-    stale 포함)·**contrasts 쌍**(모순 관계 가시화)·confidence 선언 + 건강도 카운트 1줄
-    (notes/edges/orphan/broken/stale/skipped — 건강도 줄은 일반 색인 실행에도 출력).
+    stale 포함)·**contrasts 쌍**(모순 관계 가시화)·**MOC 제안**(agy#5 — 동일 태그 5+ 노트에
+    MOC 부재 시 제안·자동 생성 안 함)·**미해소 Open Questions**(D4/D5)·confidence 선언 +
+    건강도 카운트 1줄(notes/edges/orphan/broken/stale/skipped/moc제안/open-q — 일반 색인에도 출력).
   - 후속 조치: stale 노트는 후속 연구를 재조사해 `wiki_promote` 갱신(Compiled Truth REWRITE +
     Timeline append)으로 되살리고, orphan은 관련 노트와 위키링크로 연결, broken link는 대상
-    노트 생성 또는 링크 정리. 감사 결과와 조치는 워크스페이스 CHANGELOG에 1줄 기록한다.
+    노트 생성 또는 링크 정리, MOC 제안은 사람이 상위 MOC 노트로 조립. 감사 결과와 조치는
+    워크스페이스 CHANGELOG에 1줄 기록한다.
+- **Open Questions 환류 — 다음 사이클 시드 (D4/D5)**: 산출물의 미해소 질문을 일회성으로
+  버리지 않고 노트 frontmatter `open_questions: [질문1, 질문2]`에 적어 둔다. `wiki_index --audit`가
+  이를 집계해 목록으로 보여주면(위 감사), **다음 서베이 사이클의 [다이얼]/[선별] 단계에서 그
+  질문들을 새 카테고리·검색어의 씨앗으로 재투입**한다 — 검증된 위키가 스스로 다음 조사 방향을
+  지목하는 순환이 된다(일회성 산출 금지·D4 환류). 예: 템플릿 노트 `deer-benchmark`의
+  open_questions(claim verification 정확도·rubric 이식성)를 다음 사이클에 파고든다.
+- **파이프라인 중단·재개 (agy#11)**: 긴 사이클은 `run_state.py`로 단계 상태를
+  `_meta/run-state.json`에 남긴다 — 중단 후 `run_state.py ... show`의 재개 포인터부터 이어간다
+  (research-survey-run SKILL '상태 추적' 절). team_compare도 팀별 단계 상태를 리포트에 기록한다.
 - **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름) —
   실행 절차는 §2.5 "지속 서베이" 절(`corpus_fetch --since --append` 델타 반입 루프).
 - **멀티 LLM 팀 비교(`team-compare`)**: 같은 논문을 팀별로 (producer 요약 → reviewer 검수)

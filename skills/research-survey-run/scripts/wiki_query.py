@@ -133,6 +133,57 @@ def load_notes(notes_dir):
                       "source": n["source"], "path": n["path"]} for n in notes}
 
 
+# ── pseudo-reranker + 질의 라우팅 (agy#3 · v0.7.0 P2 [1]) ────────────
+# RRF 상위 후보를 결정론 렉시컬 겹침 신호(제목 bigram 겹침 가중·본문 bigram 겹침)로 2단
+# 재정렬한다. 임베딩 없이 BM25/bigram과 같은 결정론 피처만 쓴다(환각 0). RRF 점수를 후보
+# 내 최대값으로 정규화해 렉시컬과 [0,1]로 섞되, 질의 유형별로 혼합비를 라우팅한다:
+#   - 단순 질의(내용어 토큰 ≤ SIMPLE_MAX): 제목/키워드 정확 매칭이 강한 신호 → 렉시컬 비중↑
+#   - 복합 질의: 다채널 융합(RRF)이 더 신뢰 → RRF 비중↑
+# 재정렬은 RRF 상위 후보의 '순서'만 바꾼다(집합·dangling 불변). 무회귀는 gold 재채점으로 실측.
+SIMPLE_MAX = 2                 # 내용어 토큰 수 ≤ 2 = 단순 질의
+MIX_SIMPLE, MIX_COMPLEX = 0.55, 0.75   # RRF 비중(나머지는 렉시컬) — 단순은 렉시컬을 더 신뢰
+TITLE_W, BODY_W = 0.7, 0.3     # 렉시컬 내부 가중(제목 겹침이 본문보다 강한 관련 신호)
+_WORDTOK = re.compile(r"[\w가-힣]{2,}", re.UNICODE)
+
+
+def _content_tokens(text):
+    return {t.lower() for t in _WORDTOK.findall(text or "")}
+
+
+def route_query(question):
+    """질의 라우팅 — 내용어 토큰 수로 단순/복합 분기. 반환: (class, n_tokens, rrf_mix)."""
+    n = len(_content_tokens(question))
+    if n <= SIMPLE_MAX:
+        return "simple", n, MIX_SIMPLE
+    return "complex", n, MIX_COMPLEX
+
+
+def _lexical_overlap(question, note):
+    """질의-노트 결정론 겹침 신호 [0,1] — 제목·본문 문자 bigram 겹침(공백 토큰화 약한 한국어
+    대응·기존 bigram BM25와 동일 전처리). 제목 겹침을 본문보다 가중."""
+    q_bg = set(_bigrams(question))
+    if not q_bg:
+        return 0.0
+    title_ov = len(q_bg & set(_bigrams(note["title"]))) / len(q_bg)
+    body_ov = len(q_bg & set(_bigrams(note["body"]))) / len(q_bg)
+    return TITLE_W * title_ov + BODY_W * body_ov
+
+
+def rerank(question, candidates, rrf_scores, notes, rrf_mix):
+    """2단 재정렬 — RRF 점수(후보 내 최대값으로 정규화)와 렉시컬 겹침을 rrf_mix로 혼합.
+    combined = mix·rrf_norm + (1-mix)·lexical. 동점은 (-combined, id) 결정 정렬(재현)."""
+    if not candidates:
+        return []
+    max_rrf = max(rrf_scores[i] for i in candidates) or 1.0
+    scored = []
+    for i in candidates:
+        rrf_norm = rrf_scores[i] / max_rrf
+        lex = _lexical_overlap(question, notes[i])
+        combined = rrf_mix * rrf_norm + (1 - rrf_mix) * lex
+        scored.append((i, combined))
+    return [i for i, _ in sorted(scored, key=lambda kv: (-kv[1], kv[0]))]
+
+
 def _slug(s):
     return re.sub(r"[^\w가-힣]+", "_", unicodedata.normalize("NFC", s)).strip("_")
 
@@ -164,7 +215,10 @@ def query(workspace, question, k=BM25_TOPK):
             if i in ids and i not in seen_ch:
                 seen_ch.add(i)
                 rrf[i] = rrf.get(i, 0.0) + 1.0 / (RRF_K + rank)
-    union = [i for i, _ in sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
+    rrf_ranked = [i for i, _ in sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
+    # 2단: RRF 상위 후보를 질의 라우팅에 따른 혼합비로 렉시컬 재정렬 (agy#3 · P2 [1])
+    qclass, ntok, rrf_mix = route_query(question)
+    union = rerank(question, rrf_ranked, rrf, notes, rrf_mix)
 
     ch = "fts5+bigram(rrf)" if Path(ws / INDEX_REL / "wiki.db").exists() else "bigram-only"
     lines = [
@@ -173,11 +227,13 @@ def query(workspace, question, k=BM25_TOPK):
         f"created: {date.today()}",
         f"channels: {ch}",
         f"fusion: rrf(k={RRF_K})",
+        f"route: {qclass} (tokens={ntok}, rrf_mix={rrf_mix})",
+        f"rerank: rrf_norm*{rrf_mix}+lexical*{round(1 - rrf_mix, 2)} (title_w={TITLE_W})",
         f"fts5_hits: {json.dumps(fts_hits, ensure_ascii=False)}",
         f"bigram_hits: {json.dumps(bm_hits, ensure_ascii=False)}",
         "---\n",
         f"# 위키 쿼리 — {question}\n",
-        f"채널: {ch} · RRF(K={RRF_K}) 융합 top-{k}\n",
+        f"채널: {ch} · RRF(K={RRF_K}) 융합 → 2단 재정렬(route={qclass}) top-{k}\n",
         "## 매칭 노트 (근거 발췌)",
     ]
     if union:
@@ -211,6 +267,18 @@ def _self_test():
     # 단위: _bigrams·strip
     if _bigrams("a b.c") != ["ab", "bc"]:
         failures.append(f"_bigrams strip 오류: {_bigrams('a b.c')}")
+
+    # 단위: 질의 라우팅 — 단순(토큰≤2)/복합 분기 + 혼합비 (P2 [1])
+    if route_query("사전학습 데이터") != ("simple", 2, MIX_SIMPLE):
+        failures.append(f"단순 질의 라우팅 오류: {route_query('사전학습 데이터')}")
+    if route_query("언어모델 사전학습 데이터 품질 평가") [0] != "complex":
+        failures.append(f"복합 질의 라우팅 오류: {route_query('언어모델 사전학습 데이터 품질 평가')}")
+    # 단위: 2단 재정렬 — 제목 겹침이 강한 후보를 승격(RRF 동점 상황에서 렉시컬이 순서 결정)
+    rr_notes = {"a": {"title": "합성 데이터 증강", "body": "무관 본문"},
+                "b": {"title": "무관 제목", "body": "합성 데이터 증강 상세"}}
+    rr_scores = {"a": 0.02, "b": 0.02}   # RRF 동점 → 렉시컬(제목 겹침 a↑)이 결정
+    if rerank("합성 데이터 증강", ["a", "b"], rr_scores, rr_notes, MIX_SIMPLE)[0] != "a":
+        failures.append(f"재정렬 제목 겹침 승격 실패: {rerank('합성 데이터 증강', ['a','b'], rr_scores, rr_notes, MIX_SIMPLE)}")
 
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)

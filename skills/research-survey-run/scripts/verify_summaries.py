@@ -195,6 +195,27 @@ def resolve_source(text, corpus_by_id, source_dir):
     return src_text, abstract, None
 
 
+# ── source_grade 일치 검사 (codex#9 · v0.7.0 P2 [5]) ────────────────
+SOURCE_GRADE_LINE = re.compile(r"(?im)^\s*source_grade:\s*([A-Za-z0-9_]+)\s*$")
+_QUOTE_VERBATIM = re.compile(r'"[^"\n]{12,}"|“[^”\n]{12,}”')   # 12자+ 직접인용(= verbatim 주장)
+
+
+def check_grade_consistency(summary_text, source_entry):
+    """codex#9 — 요약이 선언한 source_grade와 원문 레코드의 source_grade가 다르면 경고.
+    **verbatim 주장(직접인용 12자+)이 있는데 두 grade가 불일치**하면 특히 위험(verbatim은
+    동일 grade만 허용) — 그 사실을 경고에 명시한다. grade 미선언은 검사 생략(선택 필드)."""
+    if not source_entry:
+        return []
+    m = SOURCE_GRADE_LINE.search(summary_text)
+    declared = m.group(1) if m else None
+    src_grade = source_entry.get("source_grade")
+    if not declared or not src_grade or declared == src_grade:
+        return []
+    has_verbatim = bool(_QUOTE_VERBATIM.search(summary_text))
+    tail = " — verbatim 직접인용이 있는데 grade가 다르다(verbatim은 원문과 동일 grade만 허용)" if has_verbatim else ""
+    return [f"source_grade 불일치: 요약 선언 {declared!r} ≠ 원문 {src_grade!r}{tail}"]
+
+
 def run(dirpath, min_cites=3, corpus=None, source_dir=None,
         coverage_threshold=COVERAGE_THRESHOLD, out=sys.stdout):
     d = Path(dirpath)
@@ -228,6 +249,10 @@ def run(dirpath, min_cites=3, corpus=None, source_dir=None,
                         warns.append(f"키포인트 커버율 {cov:.2f} < {coverage_threshold} "
                                      f"(미커버 {len(uncovered)}문장 — 첫 문장: "
                                      f"{uncovered[0][:70]!r})")
+                # codex#9: 요약↔원문 source_grade 불일치 경고(verbatim은 동일 grade만)
+                gm = ARXIV_TAGGED.search(t) or ARXIV_ANY.search(t)
+                entry = corpus_by_id.get(gm.group(1)) if gm else None
+                warns.extend(check_grade_consistency(t, entry))
         if fails:
             bad += 1
             print(f"  [FAIL] {m.name}: {'; '.join(fails)}", file=out)
@@ -352,6 +377,24 @@ def _self_test():
         failures.append(f"커버 요약 커버율 오류: {cov_hi}")
     if cov_lo is None or cov_lo >= 0.6 or not unc:
         failures.append(f"미커버 요약 커버율 오류: {cov_lo} unc={len(unc)}")
+
+    # P2 [5] source_grade 일치 검사 (codex#9)
+    entry_api = {"source_grade": "api_summary"}
+    # 동일 grade → 경고 없음
+    if check_grade_consistency("source_grade: api_summary\n본문", entry_api):
+        failures.append("동일 grade를 불일치로 경고함")
+    # 불일치 + verbatim 직접인용 → 경고(verbatim 문구 포함)
+    warn_vb = check_grade_consistency(
+        'source_grade: full_text\n## Evidence\n- "a properly long verbatim quote here"\n', entry_api)
+    if not warn_vb or "verbatim" not in warn_vb[0] or "불일치" not in warn_vb[0]:
+        failures.append(f"grade 불일치+verbatim 경고 누락: {warn_vb}")
+    # 불일치 + verbatim 없음 → 경고(단, verbatim 문구 없이)
+    warn_nb = check_grade_consistency("source_grade: full_text\n본문 요약만", entry_api)
+    if not warn_nb or "verbatim" in warn_nb[0]:
+        failures.append(f"grade 불일치(비verbatim) 경고 오류: {warn_nb}")
+    # grade 미선언 → 검사 생략(선택 필드)
+    if check_grade_consistency("grade 선언 없음", entry_api):
+        failures.append("grade 미선언인데 경고함")
 
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)

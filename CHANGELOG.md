@@ -2,7 +2,44 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
-## [0.6.0] - 2026-07-21 (진행 중)
+## [0.7.0] - 2026-07-21
+
+### Added (P2 5건 — COMPARATIVE_ANALYSIS P2 · gemini 2nd-wave #3·#5·#11 · km D4/D5 · codex#9, 오너 승인)
+- **[1·agy#3] pseudo-reranker + 질의 라우팅** (`wiki_query.py`): RRF 상위 후보를 결정론 렉시컬
+  겹침(제목·본문 문자 bigram 겹침·제목 가중)으로 **2단 재정렬**. 질의를 내용어 토큰 수로
+  단순(≤2)/복합 분기 라우팅해 혼합비(rrf_mix)를 조정(단순=렉시컬↑·복합=RRF↑). 재정렬은
+  RRF 상위 후보의 순서만 바꾼다(집합·dangling 불변). **gold 12문항 재채점 무회귀 실측**:
+  1위 적중 12/12(100%)·top-5 recall 100% 유지. 라우팅·재정렬 self-test 추가.
+- **[2·agy#5] MOC 자동 제안** (`wiki_index.py --audit`): 동일 태그 노트가 5개 이상인데 그
+  태그의 MOC 노트(`type: moc`)가 없으면 제안(노트 목록·제안 파일명 `<태그>-MOC.md`).
+  **제안만**(자동 생성 금지 — 조립은 사람). MOC 존재 시 제안 제외. self-test.
+- **[3·agy#11] 파이프라인 상태 머신** (`run_state.py` 신규): run 사이클 단계(extract→shortlist→
+  summarize→verify→organize→delta)를 `_meta/run-state.json`에 기록(단계 enum·완료 플래그·재개
+  포인터). init/mark/show CLI·fail-closed(미지 단계·상태). research-survey-run SKILL에 중단·재개
+  절차 추가. team_compare는 팀별 단계 상태(produce/review/grade)를 리포트에 기록. self-test.
+- **[4·km D4/D5] Open Questions 환류**: 노트 frontmatter `open_questions`(선택) +
+  `wiki_index --audit`가 미해소 질문 집계 출력 + RUNBOOK '다음 사이클 시드 재투입' 절.
+  템플릿 노트 `deer-benchmark`에 예시 2건. self-test.
+- **[5·codex#9] source_grade**: `corpus_fetch`가 레코드에 `source_grade`(api_summary)·
+  `retrieved_at` 기록(순수 `stamp_retrieved_at`로 날짜 주입 테스트). 노트 frontmatter
+  `source_grade` 선언 지원(`wiki_index` load) + `verify_summaries.check_grade_consistency`가
+  요약↔원문 grade 불일치 시 경고(**verbatim 직접인용은 동일 grade만** — 다르면 특히 위험 명시).
+  data-dictionary 스키마 갱신. self-test.
+
+### Fixed (이월 minor)
+- `team_compare._parse_review` 배열 envelope 정합: 단일 object를 감싼 1원소 배열
+  `[{"flagged":[...]}]`은 언랩해 검수 인정, 2원소+ 배열·비object는 unchecked(R2 엄격성 유지).
+  docstring을 실제 동작과 정합화. self-test.
+
+### Verified (P2)
+- self-test 8종 전건 PASS·exit0: wiki_index·wiki_query·wiki_promote·corpus_fetch·verify_summaries·
+  wiki_grade·team_compare·run_state(신규). gold 재채점 무회귀(12/12·100%)·데모 코어 E2E 무파손·
+  `claude plugin validate` exit0.
+
+### Changed
+- `plugin.json`·RUNBOOK·DEMO frontmatter version 0.7.0. README 2종 Scripts 그룹표에 state 행 추가.
+
+## [0.6.0] - 2026-07-21
 
 ### Changed (P0 — repo 구조 개편, RESTRUCTURE_PLAN.md 옵션1 승인·집행)
 - **문서 정돈**: `INSTALL_MARKETPLACE.md` → `docs/`, `PRIVATE_REPO_SETUP.md` → `docs/archive/`

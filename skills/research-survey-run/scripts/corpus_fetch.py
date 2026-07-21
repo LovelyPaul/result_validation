@@ -68,8 +68,19 @@ def parse_atom(xml_text):
             "url": f"https://arxiv.org/abs/{aid}",
             # published = v1 제출 시각 — --since 델타 필터 기준 (날짜 부분만)
             "published": norm(e.findtext("a:published", "", NS))[:10],
+            # source_grade = 이 title/abstract의 출처 등급(codex#9): arXiv export API summary
+            # 원문 verbatim이라 'api_summary'. 노트로 승격 시 이 등급이 verbatim 주장의 기준이 된다.
+            "source_grade": "api_summary",
         })
     return out
+
+
+def stamp_retrieved_at(rows, when):
+    """반입 시점(retrieved_at) 스탬프 — 결정론 테스트 위해 when(YYYY-MM-DD)을 주입받는 순수 함수.
+    출처 등급과 함께 '언제 받은 원문인가'를 기록해 stale·재대조의 기준 시점을 남긴다(codex#9)."""
+    for r in rows:
+        r["retrieved_at"] = when
+    return rows
 
 
 def parse_since(s):
@@ -146,7 +157,7 @@ def fetch(ids=None, query=None, max_n=10, since=None):
             params["sortBy"] = "submittedDate"
             params["sortOrder"] = "descending"
     url = API + "?" + urllib.parse.urlencode(params)
-    return parse_atom(_request(url))
+    return stamp_retrieved_at(parse_atom(_request(url)), date.today().isoformat())
 
 
 CORPUS_REQUIRED = ("id", "title", "abstract")   # 범용 코퍼스 스키마 필수키 (data-dictionary.md)
@@ -228,6 +239,13 @@ def _self_test():
         failures.append(f"url 오류: {rows[0]['url']}")
     if rows[0]["published"] != "2025-12-19" or rows[1]["published"] != "2023-03-15":
         failures.append(f"published 파싱 오류: {[r['published'] for r in rows]}")
+    # P2 [5] source_grade: API summary 원문이라 전건 api_summary
+    if not all(r["source_grade"] == "api_summary" for r in rows):
+        failures.append(f"source_grade 누락/오류: {[r.get('source_grade') for r in rows]}")
+    # P2 [5] retrieved_at: 주입 날짜 스탬프(결정론)
+    stamped = stamp_retrieved_at(parse_atom(_FIXTURE), "2026-07-21")
+    if not all(r["retrieved_at"] == "2026-07-21" for r in stamped):
+        failures.append(f"retrieved_at 스탬프 오류: {[r.get('retrieved_at') for r in stamped]}")
     # P1-5: --since 델타 필터 (네트워크 0 — fixture 날짜만)
     kept, old, undated = filter_since(rows, parse_since("2024-01-01"))
     if [r["id"] for r in kept] != ["2512.17776"] or [r["id"] for r in old] != ["2303.08896"]:

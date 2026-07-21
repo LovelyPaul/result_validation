@@ -1,6 +1,6 @@
 ---
 title: research-survey DEMO (toy 실행 워크플로우 정본)
-version: 0.6.0
+version: 0.7.0
 duration: 5-10분 (+선택 ⑦ 품질 채점 2-3분)
 role: 진행자(에이전트)가 이 대본대로 가이드 진행(각 단계 질문 종료) — 설치 직후 "LLM-wiki 검색·검수가 실제로 되는가"를 체험시킨다
 ---

@@ -108,6 +108,9 @@ def load_notes(notes_dir):
         tags = fm.get("tags") or []
         if isinstance(tags, str):
             tags = [tags]
+        oq = fm.get("open_questions") or []
+        if isinstance(oq, str):
+            oq = [oq]
         out.append({
             "id": nid,
             "title": fm.get("title") or p.stem,
@@ -116,6 +119,9 @@ def load_notes(notes_dir):
             "created": fm.get("created", ""),
             "updated": fm.get("updated", ""),      # 선택 키 — stale 판정에 created보다 우선
             "confidence": fm.get("confidence", ""),  # 선택 키 — 직접인용 1.0 / 요약 0.7 선언
+            "type": fm.get("type", ""),            # 선택 키 — atomic|moc|literature|permanent (MOC 감지)
+            "open_questions": oq,                  # 선택 키 — 미해소 질문(D4/D5 환류 시드)
+            "source_grade": fm.get("source_grade", ""),  # 선택 키 — 출처 등급(codex#9)
             "body": body.strip(),
             "sha": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "path": str(p),
@@ -163,9 +169,39 @@ def _stale_notes(notes, today, stale_days):
     return sorted(stale, key=lambda s: s["id"])
 
 
+MOC_MIN_CLUSTER = 5   # 동일 태그 노트 이 수 이상이면 MOC(Map of Content) 제안 (agy#5)
+
+
+def _moc_suggestions(notes):
+    """agy#5 MOC 자동 제안 — 동일 태그 노트가 MOC_MIN_CLUSTER 이상 모였는데 그 태그를 다루는
+    MOC 노트(type: moc)가 없으면 제안. **제안만** 한다(자동 생성 금지 — 조립은 사람 몫).
+    각 제안: {tag, count, notes(정렬 id), suggested_filename}."""
+    by_tag = {}
+    moc_tags = set()   # 이미 MOC가 존재하는 태그(type==moc 노트가 든 태그)
+    for n in notes:
+        for t in n["tags"]:
+            by_tag.setdefault(t, []).append(n["id"])
+            if n.get("type") == "moc":
+                moc_tags.add(t)
+    out = []
+    for t in sorted(by_tag):
+        members = sorted(by_tag[t])
+        if len(members) >= MOC_MIN_CLUSTER and t not in moc_tags:
+            out.append({"tag": t, "count": len(members), "notes": members,
+                        "suggested_filename": f"{t}-MOC.md"})
+    return out
+
+
+def _open_questions(notes):
+    """D4/D5 Open Questions 집계 — open_questions frontmatter가 있는 노트의 미해소 질문 목록.
+    각 항목: {id, questions:[...]}. RUNBOOK의 '다음 사이클 시드 재투입' 입력."""
+    return [{"id": n["id"], "questions": list(n["open_questions"])}
+            for n in notes if n.get("open_questions")]
+
+
 def audit(notes, edges, today=None, stale_days=STALE_DAYS):
     """D2 감사 — orphan(in=out=0)·broken link(dst 부재)·stale(P1-3)·contrasts 쌍(P1-4)
-    결정론 리포트. today는 자체검사 주입용(기본 오늘)."""
+    ·MOC 제안(agy#5)·open questions(D4/D5) 결정론 리포트. today는 자체검사 주입용(기본 오늘)."""
     ids = {n["id"] for n in notes}
     has_out = {e["src"] for e in edges}
     has_in = {e["dst"] for e in edges if e["exists"]}
@@ -173,7 +209,8 @@ def audit(notes, edges, today=None, stale_days=STALE_DAYS):
     broken = [{"src": e["src"], "dst": e["dst"]} for e in edges if not e["exists"]]
     contrasts = [{"src": e["src"], "dst": e["dst"]} for e in edges if e["rel"] == "contrasts"]
     stale = _stale_notes(notes, today or date.today(), stale_days)
-    return {"orphans": orphans, "broken_links": broken, "contrasts": contrasts, "stale": stale}
+    return {"orphans": orphans, "broken_links": broken, "contrasts": contrasts, "stale": stale,
+            "moc_suggestions": _moc_suggestions(notes), "open_questions": _open_questions(notes)}
 
 
 def _load_prev_manifest(index_dir):
@@ -263,7 +300,7 @@ def build_index(workspace, today=None):
             except ValueError:
                 note_confidence[n["id"]] = n["confidence"]
 
-    # P1-3 건강도 요약 — 한 줄 카운트 (notes/edges/orphan/broken/stale/skipped)
+    # P1-3 건강도 요약 — 한 줄 카운트 (notes/edges/orphan/broken/stale/skipped + v0.7.0 moc/open_q)
     health = {
         "notes": len(notes),
         "edges": len(edges),
@@ -271,6 +308,8 @@ def build_index(workspace, today=None):
         "broken": len(audit_result["broken_links"]),
         "stale": len(audit_result["stale"]),
         "skipped": len(skipped),
+        "moc_suggestions": len(audit_result["moc_suggestions"]),
+        "open_questions": sum(len(o["questions"]) for o in audit_result["open_questions"]),
     }
 
     manifest = {
@@ -428,11 +467,49 @@ def _self_test():
         # P1-3: updated가 created보다 우선 — fresh(created 오래·updated 최근)는 stale 아님
         if "fresh" in stale_by_id:
             failures.append("P1-3 updated 우선 위반: fresh가 stale로 판정됨")
-        # P1-3: 건강도 요약 카운트
+        # P1-3: 건강도 요약 카운트 (v0.7.0: moc_suggestions·open_questions 키 추가)
         h = mt["health"]
-        expect_h = {"notes": 4, "edges": 5, "orphans": 1, "broken": 1, "stale": 2, "skipped": 0}
+        expect_h = {"notes": 4, "edges": 5, "orphans": 1, "broken": 1, "stale": 2, "skipped": 0,
+                    "moc_suggestions": 0, "open_questions": 0}
         if h != expect_h:
             failures.append(f"P1-3 건강도 카운트 오류: {h} ≠ {expect_h}")
+
+    # ── v0.7.0 [2] MOC 제안 · [4] Open Questions 집계 — 격리 fixture ──
+    with tempfile.TemporaryDirectory() as d:
+        ws = Path(d)
+        notes = ws / NOTES_REL
+        notes.mkdir(parents=True)
+        # 태그 'eval' 5노트(MOC 부재) → 제안 1건 / 태그 'misc' 2노트 → 제안 없음
+        for i in range(5):
+            (notes / f"e{i}.md").write_text(
+                f"---\nid: e{i}\ntitle: Eval {i}\ncreated: 2026-07-20\ntags: [eval]\n"
+                f"source: p.{i}\n---\n## Compiled Truth\n\n내용 (p.{i}).\n\n## Timeline\n\n- x\n",
+                encoding="utf-8")
+        (notes / "m0.md").write_text(
+            "---\nid: m0\ntitle: Misc 0\ncreated: 2026-07-20\ntags: [misc]\n"
+            "open_questions: [평가 편향은 어떻게 완화하나, gold 확장 기준은]\nsource: p.1\n---\n"
+            "## Compiled Truth\n\n내용 (p.1).\n\n## Timeline\n\n- x\n", encoding="utf-8")
+        (notes / "m1.md").write_text(
+            "---\nid: m1\ntitle: Misc 1\ncreated: 2026-07-20\ntags: [misc]\nsource: p.2\n---\n"
+            "## Compiled Truth\n\n내용 (p.2).\n\n## Timeline\n\n- x\n", encoding="utf-8")
+        mm, _ = build_index(str(ws))
+        mocs = {s["tag"]: s for s in mm["audit"]["moc_suggestions"]}
+        if set(mocs) != {"eval"}:
+            failures.append(f"[2] MOC 제안 대상 오류: {sorted(mocs)} (기대 eval만·misc 2노트 제외)")
+        if mocs.get("eval", {}).get("suggested_filename") != "eval-MOC.md" or mocs["eval"]["count"] != 5:
+            failures.append(f"[2] MOC 제안 내용 오류: {mocs.get('eval')}")
+        # MOC 노트(type: moc)가 생기면 그 태그 제안은 사라져야
+        (notes / "eval-MOC.md").write_text(
+            "---\nid: eval-MOC\ntitle: Eval MOC\ncreated: 2026-07-20\ntags: [eval]\ntype: moc\n"
+            "source: p.1\n---\n## Compiled Truth\n\n[[e0]] 지도 (p.1).\n\n## Timeline\n\n- x\n",
+            encoding="utf-8")
+        mm2, _ = build_index(str(ws))
+        if any(s["tag"] == "eval" for s in mm2["audit"]["moc_suggestions"]):
+            failures.append("[2] MOC 존재 태그가 여전히 제안됨")
+        # [4] open_questions 집계
+        oq = {o["id"]: o["questions"] for o in mm["audit"]["open_questions"]}
+        if set(oq) != {"m0"} or len(oq["m0"]) != 2:
+            failures.append(f"[4] open_questions 집계 오류: {oq}")
 
     if failures:
         print("SELF-TEST FAIL:")
@@ -471,7 +548,8 @@ def main():
               f"{[(x['id'], x['stem']) for x in a_['id_stem_mismatch']]}")
     h = m["health"]
     print(f"건강도: notes {h['notes']} · edges {h['edges']} · orphan {h['orphans']} · "
-          f"broken {h['broken']} · stale {h['stale']} · skipped {h['skipped']}")
+          f"broken {h['broken']} · stale {h['stale']} · skipped {h['skipped']} · "
+          f"moc제안 {h['moc_suggestions']} · open-q {h['open_questions']}")
     if a.audit:
         if a_["stale"]:
             print(f"감사(D2) stale({STALE_DAYS}일 초과) {len(a_['stale'])}건:")
@@ -487,6 +565,23 @@ def main():
             print("감사(D2) contrasts 쌍: 0건")
         if m["note_confidence"]:
             print(f"confidence 선언 {len(m['note_confidence'])}건: {m['note_confidence']}")
+        # agy#5 MOC 제안 (제안만 — 자동 생성 금지)
+        if a_["moc_suggestions"]:
+            print(f"감사(agy#5) MOC 제안 {len(a_['moc_suggestions'])}건 (동일 태그 {MOC_MIN_CLUSTER}+ 노트·MOC 부재):")
+            for s in a_["moc_suggestions"]:
+                print(f"  - 태그 '{s['tag']}' {s['count']}노트 → 제안 파일 {s['suggested_filename']} "
+                      f"(노트: {', '.join(s['notes'])})")
+        else:
+            print(f"감사(agy#5) MOC 제안: 0건 (동일 태그 {MOC_MIN_CLUSTER}+ 클러스터 없음 또는 MOC 이미 존재)")
+        # D4/D5 Open Questions 집계 (다음 사이클 시드)
+        if a_["open_questions"]:
+            tot = sum(len(o["questions"]) for o in a_["open_questions"])
+            print(f"감사(D4/D5) 미해소 Open Questions {tot}건 ({len(a_['open_questions'])}노트) — 다음 사이클 시드:")
+            for o in a_["open_questions"]:
+                for q in o["questions"]:
+                    print(f"  - [{o['id']}] {q}")
+        else:
+            print("감사(D4/D5) 미해소 Open Questions: 0건")
     if m["mode"] == "python-fallback":
         print("  (FTS5 미가용 — wiki_query가 순수 파이썬 bigram BM25로 랭킹합니다.)")
 

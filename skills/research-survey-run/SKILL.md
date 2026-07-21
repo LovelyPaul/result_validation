@@ -39,8 +39,27 @@ description: This skill runs one full survey cycle for a category — extract, s
 7. **[증분]** `80-reports/`의 서베이 문서에 이번 배치를 Delta Log로 append(전체 재작성 금지).
    `CHANGELOG.md`·`PROJECT_STATUS.md` 갱신.
 
+## 상태 추적 · 중단·재개 (agy#11 — 파이프라인 상태 머신)
+장기 사이클은 중단·에러로 끊길 수 있다. 단계 상태를 `_meta/run-state.json`에 남겨 **누락 없이
+재개**한다(결정론 — LLM 판단 아님). 단계: extract→shortlist→summarize→verify→organize→delta.
+- **사이클 시작 시 1회**: 상태 파일 초기화(전 단계 pending).
+  ```
+  python "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/run_state.py" --workspace <ws> init --category <cat>
+  ```
+- **각 단계 착수/완료마다**: 상태 갱신(진행 중·완료·실패 + 사유 note).
+  ```
+  python "${CLAUDE_PLUGIN_ROOT}/.../run_state.py" --workspace <ws> mark summarize in_progress
+  python "${CLAUDE_PLUGIN_ROOT}/.../run_state.py" --workspace <ws> mark summarize done
+  ```
+- **세션 재시작·중단 복구 시**: `... show`로 재개 포인터(첫 비-done 단계)를 확인하고 **거기부터**
+  이어간다 — 이미 done인 단계는 다시 돌리지 않는다(중복 작업·비용 방지).
+  ```
+  python "${CLAUDE_PLUGIN_ROOT}/.../run_state.py" --workspace <ws> show
+  ```
+
 ## 완료 게이트
-- 3중 검증 전건 PASS · 정리 산출물 존재 · Delta Log 갱신. 각 단계는 질문으로 종료(다음 진행 확인).
+- 3중 검증 전건 PASS · 정리 산출물 존재 · Delta Log 갱신 · run-state 전 단계 done(재개 포인터
+  = 전건 완료). 각 단계는 질문으로 종료(다음 진행 확인).
 
 ## 가설로 이어가기 (선택)
 - 인사이트의 갭에서 가설을 만들려면 `research-survey-main`의 §가설 절차(idea-critic 채점 → accept/hold

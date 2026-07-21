@@ -4,6 +4,8 @@ title: DEER — 전문가 보고서 평가 벤치마크
 created: 2026-07-20
 tags: [llm-evaluation, deep-research, rubric]
 source: arXiv:2512.17776
+source_grade: api_summary
+open_questions: [claim verification 아키텍처가 uncited 주장의 evidence quality를 실제로 얼마나 정확히 정량화하나, 101 rubric items가 도메인 밖 보고서에도 이식되나]
 ---
 ## Compiled Truth
 

@@ -78,10 +78,11 @@ All scripts live in `skills/research-survey-run/scripts/` (python3 stdlib, each 
 
 | Group | Scripts | Role |
 |---|---|---|
-| **wiki** | `wiki_index.py` · `wiki_query.py` · `wiki_promote.py` · `wiki_grade.py` | index/audit · RRF search · promote gate · grading harness (grade imports query/promote/verify) |
-| **corpus** | `classify.py` · `corpus_fetch.py` | deterministic classify · arXiv ingest + `--since` delta |
-| **verify** | `verify_summaries.py` | summary lint + source-coverage (reused by wiki_grade) |
+| **wiki** | `wiki_index.py` · `wiki_query.py` · `wiki_promote.py` · `wiki_grade.py` | index/audit (stale·MOC suggest·open-questions) · RRF search + pseudo-reranker & query routing · promote gate · grading harness (grade imports query/promote/verify) |
+| **corpus** | `classify.py` · `corpus_fetch.py` | deterministic classify · arXiv ingest + `--since` delta + `source_grade`/`retrieved_at` |
+| **verify** | `verify_summaries.py` | summary lint + source-coverage + source_grade consistency (reused by wiki_grade) |
 | **team** *(v0.6.0)* | `team_compare.py` | multi-LLM team-compare lab — producer/reviewer per team, prompt via stdin, path-hygiene on ids, deterministic scoring scoped to Evidence number/quote substring existence (qualitative claims out of scope; low-evidence flagged) |
+| **state** *(v0.7.0)* | `run_state.py` | pipeline state machine — records run-cycle stages in `_meta/run-state.json` for resume-after-interruption |
 
 ## Requirements
 - Claude Code. Core tutorial runs locally (python3 stdlib for classify/verify scripts).

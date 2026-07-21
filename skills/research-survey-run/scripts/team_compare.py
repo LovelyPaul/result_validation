@@ -161,14 +161,22 @@ def _parse_review(reviewer_out):
     - checked=False : JSON 부재·비object·flagged 키 부재·flagged가 null/string/number/object·
       비string 원소·빈 문자열 포함 = **검수 불능(unchecked)**. schema-invalid JSON도 unchecked로
       막는다(null→[]·string→문자별 리스트로 위장 통과하던 우회 봉쇄·위장 무결 차단).
+    - **배열 envelope 정합(v0.7.0 minor)**: 일부 CLI는 출력을 단일 object를 감싼 1원소 배열
+      `[{"flagged":[...]}]`로 낸다 — 이 경우만 언랩해 같은 엄격 규칙을 적용한다. 2원소 이상
+      배열·비object 원소는 여전히 unchecked(엄격성 유지).
     """
-    m = re.search(r"\{.*\}", reviewer_out or "", re.S)
+    m = re.search(r"[\[{].*[\]}]", reviewer_out or "", re.S)   # object 또는 배열 envelope
     if not m:
         return [], False
     try:
         obj = json.loads(m.group(0))
     except (json.JSONDecodeError, ValueError):
         return [], False
+    if isinstance(obj, list):   # 1원소 배열 envelope만 언랩 (그 외 배열은 unchecked)
+        if len(obj) == 1 and isinstance(obj[0], dict):
+            obj = obj[0]
+        else:
+            return [], False
     if not isinstance(obj, dict) or "flagged" not in obj:
         return [], False
     flagged = obj["flagged"]
@@ -207,11 +215,14 @@ def run_team(team, paper, workspace, runner, seeded=None):
                    ensure_ascii=False, indent=2), encoding="utf-8")
 
     score = grade_summary(summary, paper)
+    # agy#11: 팀별 단계 상태 기록 — 중단 시 어느 단계까지 됐는지 남긴다(하네스 견고성).
+    stages = {"produce": "done", "review": "checked" if reviewer_checked else "unchecked",
+              "grade": "done"}
     entry = {"team_id": team["team_id"], "paper": aid,
              "producer": f"{pr['cli']}:{pr.get('model', '')}",
              "reviewer": f"{rv['cli']}:{rv.get('model', '')}",
              "score": score, "reviewer_flagged": flagged,
-             "reviewer_checked": reviewer_checked}
+             "reviewer_checked": reviewer_checked, "stages": stages}
     if seeded is not None:
         leaked = [s for s in seeded if s in summary]       # 매설 문구가 요약에 유입됐나
         caught = [s for s in leaked if any(s in f for f in flagged)]  # reviewer가 그 유입을 지적했나
@@ -372,6 +383,13 @@ def _self_test():
     # 유효 대조군은 여전히 checked=True (회귀 방지)
     if _parse_review('{"flagged": ["진짜 지적"]}') != (["진짜 지적"], True):
         failures.append("유효 flagged 대조군 회귀")
+    # v0.7.0 minor: 1원소 배열 envelope는 언랩·검수 인정 / 2원소 배열은 unchecked(엄격 유지)
+    if _parse_review('[{"flagged": ["지적"]}]') != (["지적"], True):
+        failures.append("1원소 배열 envelope 언랩 실패")
+    if _parse_review('[{"flagged": []}]') != ([], True):
+        failures.append("1원소 배열 envelope 빈 리스트 처리 오류")
+    if _parse_review('[{"flagged": []}, {"flagged": ["x"]}]') != ([], False):
+        failures.append("2원소 배열은 unchecked여야(엄격 유지)")
 
     # 단위: 채점 — 충실 요약(94.2·seven 실재)=FAIL 0 / 발명 요약(88.8·999)=FAIL
     good = "## Summary\nx\n## Why\ny\n## Evidence\n- 94.2% accuracy · seven datasets\nsource_pdf: 1.pdf — arXiv:1234.56789\n"
@@ -454,6 +472,9 @@ def _self_test():
         for r in rep["results"]:
             if not r.get("reviewer_checked"):
                 failures.append(f"정상 reviewer가 unchecked로 오집계: {r['team_id']}")
+            # agy#11: 팀별 단계 상태 기록
+            if r.get("stages") != {"produce": "done", "review": "checked", "grade": "done"}:
+                failures.append(f"팀별 단계 상태 기록 오류: {r.get('stages')}")
         # 팀별 분리 작업영역
         for tid in ("A", "B"):
             if not (ws / DRAFTS_REL / tid / "1234.56789.md").exists():
