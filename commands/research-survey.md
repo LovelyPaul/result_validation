@@ -1,7 +1,7 @@
 ---
 name: research-survey
 description: "논문 서베이·연구 정리·리서치 토픽 추적 요청에 사용합니다. '연구 서베이 / 논문 정리 / research survey / 서베이 튜토리얼 / ICML 논문 정리 / 관심 주제 논문 모아줘 / 지속 서베이 셋업' 같은 발화에 발동합니다. 단, 단발성 심층 리서치(웹 다중소스 조사) 요청이면 /deep-research 를, PRD·기획 문서 작성이면 /show-me-the-prd 를 사용합니다."
-argument-hint: "[tutorial | demo | init <주제> | run <카테고리> | help]"
+argument-hint: "[tutorial | demo | init <주제> | run <카테고리> | team-compare | help]"
 allowed-tools:
   - Read
   - Write
@@ -29,6 +29,7 @@ allowed-tools:
 | `demo` | toy 가이드 체험 | `research-survey-main` | 정본 `references/DEMO.md` — 설치 직후 샘플만으로 추출→위키 검색→검수 거부 2종→승격을 가이드 진행(5~10분·각 단계 질문 종료) |
 | `init <주제>` | 워크스페이스 생성 | `research-survey-init` | workspace-standards 준수 서베이 워크스페이스 스캐폴딩 |
 | `run <카테고리>` | 한 사이클 실행 | `research-survey-run` | 지정 카테고리를 추출→요약→검증→정리까지 1사이클 |
+| `team-compare` | 멀티 LLM 팀 비교 실습 랩 | `research-survey-main` | 정본 `references/TEAM_COMPARE.md` — 교차 벤더 리뷰(producer/reviewer)를 나란히 돌려 결정론 채점으로 비교. 기본 dry-run(비용 가드)·`--yes`로 실행 |
 | `help` | 도움말 | (이 파일) | 아래 개요 출력 |
 
 ## 발동 시 즉시 (문서만 읽고 끝내지 말 것 — 실행하라)
@@ -41,6 +42,9 @@ allowed-tools:
 2. `init`이면 대상 주제를 확인하고(모호하면 AskUserQuestion 툴 JSON으로 질문 — 텍스트 질문 금지)
    `research-survey-init` 스킬로 워크스페이스를 만든다.
 3. `run`이면 대상 카테고리를 확인하고 `research-survey-run` 스킬로 1사이클을 돌린다.
+4. `team-compare`면 `${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/references/TEAM_COMPARE.md`를
+   읽고 ①~④ 흐름을 가이드 진행한다(기본 dry-run으로 호출 수·비용을 먼저 보이고, 진행 여부를
+   AskUserQuestion으로 물은 뒤에만 `--yes` 실행 — 각 단계 질문 종료).
 
 ## 개요 (help)
 

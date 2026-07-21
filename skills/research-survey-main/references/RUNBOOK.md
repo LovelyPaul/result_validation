@@ -1,6 +1,6 @@
 ---
 title: research-survey RUNBOOK (정본 대본)
-version: 0.5.0
+version: 0.6.0
 duration: 15-20분 (코어) + 확장
 role: 진행자(에이전트)가 이 대본을 읽고 라이브로 튜토리얼을 진행한다
 ---
@@ -283,6 +283,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/classify.py" -
     노트 생성 또는 링크 정리. 감사 결과와 조치는 워크스페이스 CHANGELOG에 1줄 기록한다.
 - **지속 서베이**: arXiv 데일리가 같은 다이얼로 신착을 매칭하는 원리(스냅샷 ↔ 흐름) —
   실행 절차는 §2.5 "지속 서베이" 절(`corpus_fetch --since --append` 델타 반입 루프).
+- **멀티 LLM 팀 비교(`team-compare`)**: 같은 논문을 팀별로 (producer 요약 → reviewer 검수)
+  나란히 돌려 **교차 벤더 리뷰가 단일 벤더 미탐을 잡는가**를 실습한다. 판정·집계는 결정론
+  채점기(verify_summaries source-coverage)만 사용 — LLM 출력을 점수 근거로 쓰지 않는다.
+  기본 dry-run(비용 가드·호출 수 미리보기)·`--yes`로 실행. 정본은 `references/TEAM_COMPARE.md`,
+  실행기는 `scripts/team_compare.py`, 팀 정의는 `00-system/teams.json`(샘플 teams.sample.json —
+  §0.5로 실측된 CLI만).
 - **다중 노드 협업**: roles.md의 master·worker·reviewer·inspector가 어떻게 심의하는지(대규모 서베이).
 
 ## §3.5 — 산출물 규약 (불변)

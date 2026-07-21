@@ -20,6 +20,23 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   E2E(classify 7편→index 3노트→query 1위 deer-benchmark) · grade E2E(적중 12/12·거부 5/5·
   exit0) · `claude plugin validate` exit0.
 
+### Added (P1 — team-compare 멀티 LLM 팀 비교 실습 랩)
+- **`team_compare.py`** (scripts/·stdlib): 같은 논문을 팀별로 (producer 헤드리스 요약 →
+  reviewer 검수)한 뒤 **판정·집계는 결정론 채점기만**(verify_summaries의 resolve_source·
+  check_evidence_grounding 재사용 — 인용 실재율·coverage FAIL·옵션 `--seeded` 매설 검출률).
+  팀별 분리 작업영역(`40-drafts/<team_id>/`)·비교 리포트(`80-reports/team-compare-report.{md,json}`).
+  **비용 가드**: 기본 dry-run(실 LLM 호출 0·호출 수 미리보기)·`--yes`로만 실행.
+  실주행 버그 4종 회피(review-workspaces 실측): ①Windows .ps1 npm shim은 shutil.which 해소 후
+  powershell 라우팅 ②프롬프트 argv 리스트(shell=False)로 인용 붕괴 회피 ③stdin=DEVNULL hang 방지
+  ④codex --skip-git-repo-check trusted-dir 회피. self-test는 CLI 호출 0(fake runner 주입).
+- **`teams.sample.json`** (00-system/): 팀 정의 스키마(team_id·producer/reviewer의 cli·
+  cmd_template·model). 실측 가용 조합만(codex↔claude 역조합 2팀)·미설치 CLI는 주석 예시.
+- **정본 `references/TEAM_COMPARE.md`**: 동기(교차 벤더 리뷰가 단일 벤더 미탐 major를 잡은
+  실증)·구성·해석 가이드. `/research-survey team-compare` 커맨드 라우팅·RUNBOOK §3 포인터.
+
+### Changed
+- `plugin.json`·RUNBOOK·DEMO frontmatter version 0.6.0.
+
 ## [0.5.0] - 2026-07-21
 
 ### Added (비교 분석 P1 5건 — gbrain·knowledge-manager·wiki-demo 대조 격차 해소, 오너 승인)

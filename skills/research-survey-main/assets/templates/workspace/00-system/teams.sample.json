@@ -1,0 +1,20 @@
+{
+  "_doc": "team-compare 팀 정의 샘플 — 이 파일을 워크스페이스 00-system/teams.json 으로 복사 후 team_compare.py 로 실행. ★실측 가용 조합만 담았다(이 머신에서 Get-Command 확인: codex·claude 가용). 미설치 CLI는 아래 _examples 주석에 예시만 두고 teams 배열엔 넣지 않는다 — 없는 CLI를 넣으면 team_compare가 '미설치' SystemExit로 막는다. producer/reviewer는 교차 벤더가 핵심(같은 벤더끼리는 단일 벤더 미탐을 못 잡는다).",
+  "teams": [
+    {
+      "team_id": "A-codex-claude",
+      "producer": {"cli": "codex", "cmd_template": "exec --skip-git-repo-check -m {model}", "model": "gpt-5.6-sol"},
+      "reviewer": {"cli": "claude", "cmd_template": "-p --model {model}", "model": "claude-fable-5"}
+    },
+    {
+      "team_id": "B-claude-codex",
+      "producer": {"cli": "claude", "cmd_template": "-p --model {model}", "model": "claude-fable-5"},
+      "reviewer": {"cli": "codex", "cmd_template": "exec --skip-git-repo-check -m {model}", "model": "gpt-5.6-sol"}
+    }
+  ],
+  "_examples_미설치_CLI_예시_참고용": {
+    "_note": "이 머신에 있으면 teams 배열로 옮겨 쓸 수 있다. cmd_template의 {model}·{prompt} 치환 규칙: {prompt} 미포함 시 프롬프트가 마지막 argv로 자동 추가된다.",
+    "gemini": {"cli": "gemini", "cmd_template": "-m {model} -p", "model": "gemini-2.5-pro"},
+    "ollama": {"cli": "ollama", "cmd_template": "run {model}", "model": "llama3.1"}
+  }
+}
