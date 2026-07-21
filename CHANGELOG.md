@@ -36,8 +36,20 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
   wiki_grade·team_compare·run_state(신규). gold 재채점 무회귀(12/12·100%)·데모 코어 E2E 무파손·
   `claude plugin validate` exit0.
 
+### Fixed (P2 R1 — reviewer-codex REVISE major 1, 적대 재현 수용)
+- **(major) `run_state.py` persisted state 스키마 검증**: `load()`가 디스크 상태를 검증 없이
+  신뢰하고 `mark()`가 디스크의 stage 이름을 허용 목록으로 삼아, 변조된 run-state.json의
+  unknown stage(`evil`)·부정 status(`banana`)·누락/중복 stages·stale resume를 show/mark가
+  승인·재작성하던 구멍(codex 재현). `_validate()`가 **코드 상수 STAGES·STATUSES 기준**으로
+  ①stage 집합·순서 일치(누락·unknown·중복·순서 뒤섞임 일괄) ②status enum ③stale resume를
+  검사해 위반 시 fail-closed(`SystemExit '상태 파일 스키마 위반: ...'`). `mark()`도 상수 대조로
+  unknown stage 거부. `init_state`의 stages 파라미터 제거(고정 스키마). self-test 5케이스
+  (unknown/부정/누락/중복/stale) + 정상 통과·mark 상수 거부 회귀.
+
 ### Changed
 - `plugin.json`·RUNBOOK·DEMO frontmatter version 0.7.0. README 2종 Scripts 그룹표에 state 행 추가.
+- GUIDELINE.md 메타하네스 프레임 정체성 1항 동승(master 작성·정정 — runtime-enforced를
+  wiki_promote 스크립트 게이트로 정직화·하네스 4단계 정합).
 
 ## [0.6.0] - 2026-07-21
 
