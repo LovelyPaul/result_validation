@@ -56,7 +56,8 @@ back to a page in the paper (`— Table 1, p.6`) and filters hallucinations thro
 ## Features
 | Component | What |
 |---|---|
-| `/research-survey` command | Router: `tutorial` / `demo` / `init` / `run` / `help` |
+| `/research-survey` command | Router: `tutorial` / `demo` / `init` / `run` / `curriculum` / `team-compare` / `help` |
+| `curriculum` track (`research-survey-curriculum` skill) | Guide-only 4-week course mapping the study curriculum onto real features: week01 get-it-running (demo/init/corpus_fetch/classify) → week02 knowledge base + review criteria (2-part wiki notes/promote gate/source-coverage/gold+seeded/wiki_grade) → week03 harden + Loop (deterministic gates/run_state resume/30-day audit/open-questions) → week04 multi-agent adjudication (team-compare cross-vendor/GUIDELINE). Measures learner progress from files (no fabricated progress) |
 | `demo` walkthrough (`references/DEMO.md`) | Post-install toy run on bundled samples: scaffold → copy corpus+3 wiki notes → classify (7/15 extracted) → wiki search with cited excerpts → 2 gate-rejection demos (no-source, timeline tampering) → clean promote |
 | `corpus_fetch.py` | Pull your own papers from the arXiv export API (`--ids` / `--query --max`, verbatim title+abstract, `--append` dedup-merge) into the universal corpus schema. `--since YYYY-MM-DD` filters by submission date for continuous-survey delta ingest (undated entries fail-closed excluded); network-layer errors (offline/DNS/timeout) get explicit diagnostics |
 | `research-survey-main` skill | Live tutorial + orchestration (RUNBOOK is the SOT) |

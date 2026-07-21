@@ -47,6 +47,9 @@
    - **정본이 쌓임**(wiki notes 존재): "검증된 노트가 쌓여 있어요 — `/research-survey run`으로
      이어가거나, 위키 검색·30일 감사(stale·MOC 제안·Open Questions 점검)는 research-survey-run
      스킬로 돌릴 수 있어요. 새 주제로 넓히려면 taxonomy.json에 카테고리를 추가하면 됩니다."
+   - **처음이거나 단계별로 배우고 싶으면**: `/research-survey curriculum`으로 4주 커리큘럼
+     (설치→검수 하네스 구축)을 진행 상황에 맞춰 안내받을 수 있다 — 시작 전이면 week01,
+     이미 진행됐으면 실측된 상태에 맞는 주차부터. (`curriculum week02`처럼 주차 지정도 가능.)
    - 잘 모르겠으면 `/research-survey help`로 사용법을 안내한다.
 
 ## 경계·안전핀 (CLAUDE.md §2·§12와 동일 — 여기서도 유효)

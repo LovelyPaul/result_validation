@@ -2,6 +2,30 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.8.0] - 2026-07-22
+
+### Added (4주 커리큘럼 + 진행 스킬 — 처음 시작한 사람이 단계별로, 오너 승인)
+- **`research-survey-curriculum` 스킬 신설** + `references/week01-guide.md`~`week04-guide.md`:
+  스터디 정본(gpters23_intro/0_PLAN_STUDY_) 4주 커리큘럼을 **이미 구현된 research-survey
+  실기능에만 매핑**(환각0 — 명령·파일·수치는 RUNBOOK·DEMO·TEAM_COMPARE·GUIDELINE 실측 인용,
+  새 개념 발명 0). 안내 전용(수강생 작업 대행 안 함)·진행 톤 규약 준수·단계 질문 종료·
+  **수강생 진행을 파일로 실측**(PROJECT_STATUS·run-state·corpus·notes)해 맞는 주차부터 안내.
+  - week01 일단 돌아가게: `/research-survey demo`→`init`→`corpus_fetch` 자기 주제→classify.
+  - week02 지식 창고+검수 기준: wiki 2분할 노트·`wiki_promote` 게이트(B8/E1/A3)·
+    `verify_summaries --corpus` source-coverage·gold 질문셋/오류 매설·`wiki_grade` 채점.
+  - week03 하네스 견고화+Loop: 결정론 게이트 체계·`run_state` 중단재개·`wiki_index --audit`
+    (30일 stale·MOC 제안·Open Questions)·재채점 재현 루프.
+  - week04 멀티에이전트 심의: `team_compare` 교차 벤더 랩·실증 사례·`GUIDELINE.md` 발표.
+- **커맨드 라우팅 `curriculum [week]`**: `/research-survey curriculum`(현황 실측→주차 추천)·
+  `curriculum week02`(해당 주차 진행). 인자 힌트·라우팅 표·발동 절차 추가.
+- **워크스페이스 통합(배치 설계: 옵션 B)**: 가이드는 플러그인 references 단일 출처에 두고
+  워크스페이스에 복사하지 않는다(drift 0·경량·10-unit 무손상). 대신 템플릿 `AGENTS.md`
+  세션 시작 '다음 액션'에 `/research-survey curriculum` 진입점 추가(v0.7.1 교훈 — 실행 가능
+  경로만). GUIDELINE.md §6 실습 시나리오에 커리큘럼 트랙 1줄 연계.
+
+### Changed
+- `plugin.json`·RUNBOOK·DEMO frontmatter version 0.8.0. README 2종 Features에 curriculum 추가.
+
 ## [0.7.1] - 2026-07-21
 
 ### Added (사용자 워크스페이스 자기소개 어댑터 — clone repo와 동일한 세션 시작 경험, 오너 승인)
