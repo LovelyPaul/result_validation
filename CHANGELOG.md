@@ -55,6 +55,23 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
 - self-test 추가: 개행 프롬프트 stdin 전문 도달(절단 회귀 방지)·reviewer 비응답→unchecked·
   `_parse_review` checked/unchecked 판별.
 
+### Fixed (P1 R2 — reviewer-codex REVISE major 3, 적대 probe 재현·전건 수용)
+- **(major) `_parse_review` 스키마 엄격화**: flagged 키 존재만 보던 것 → root가 object이고
+  flagged가 **list이며 모든 원소가 비어있지 않은 string**일 때만 checked=True. `{"flagged":null}`
+  (→[]·checked 위장), `{"flagged":"ABC"}`(문자별 리스트로 허위 지적 건수) 등 schema-invalid
+  JSON이 unchecked 게이트를 우회하던 구멍 봉쇄. self-test 7타입(null·string·number·object·
+  혼합·빈문자열·비object root) + 유효 대조군.
+- **(major) team_id·paper id 경로 위생**: `_safe_id`(영숫자 시작+영숫자·._- 만·`..`·구분자·
+  절대경로 거부)로 검증 + `_ensure_within`(resolve 후 허용 root 하위 `is_relative_to` fail-closed).
+  `team_id='../../outside-team'`·`paper id='../../../outside-paper'`가 workspace 밖에 파일을 쓰던
+  것(codex containment probe 재현) 차단. 중복 team_id도 실행 전 거부. arXiv id의 점(2303.08896)은
+  허용. self-test: 이탈 2케이스·중복·정상 id.
+- **(major) 지표 범위 정직화**: '인용 실재율' → **'Evidence 수치·직접인용 substring 실재율'**로
+  리포트·문서 라벨 한정. needle(검증 가능 성분) 수 < 임계(기본 3)면 **low-evidence 플래그**
+  표기(실재 인용 1개+허위 qualitative Summary 조합이 100%로 과신되던 우회를 드러냄).
+  TEAM_COMPARE.md에 '지표 범위·한계' 절 신설(질적 주장은 검증 안 함·reviewer 검수/본문 정독
+  병행 해석). self-test: qualitative 반례가 low-evidence로 잡히고 리포트에 경고 표기됨.
+
 ## [0.5.0] - 2026-07-21
 
 ### Added (비교 분석 P1 5건 — gbrain·knowledge-manager·wiki-demo 대조 격차 해소, 오너 승인)

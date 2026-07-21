@@ -81,7 +81,7 @@ All scripts live in `skills/research-survey-run/scripts/` (python3 stdlib, each 
 | **wiki** | `wiki_index.py` · `wiki_query.py` · `wiki_promote.py` · `wiki_grade.py` | index/audit · RRF search · promote gate · grading harness (grade imports query/promote/verify) |
 | **corpus** | `classify.py` · `corpus_fetch.py` | deterministic classify · arXiv ingest + `--since` delta |
 | **verify** | `verify_summaries.py` | summary lint + source-coverage (reused by wiki_grade) |
-| **team** *(v0.6.0)* | `team_compare.py` | multi-LLM team-compare lab — producer/reviewer per team, deterministic scoring |
+| **team** *(v0.6.0)* | `team_compare.py` | multi-LLM team-compare lab — producer/reviewer per team, prompt via stdin, path-hygiene on ids, deterministic scoring scoped to Evidence number/quote substring existence (qualitative claims out of scope; low-evidence flagged) |
 
 ## Requirements
 - Claude Code. Core tutorial runs locally (python3 stdlib for classify/verify scripts).

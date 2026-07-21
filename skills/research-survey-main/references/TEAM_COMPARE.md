@@ -27,7 +27,7 @@ producer 요약이 얼마나 근거에 충실한지는 `verify_summaries`의 sou
 |---|---|---|
 | 팀 정의 | `00-system/teams.json` (샘플 `teams.sample.json`) | 팀별 producer/reviewer의 CLI·cmd_template·model. **실측 가용 CLI만**·교차 벤더 권장 |
 | 실행기 | `team_compare.py` | 팀별 분리 작업영역 생성 → producer 요약 → reviewer 검수 → 결정론 채점 → 비교 리포트 |
-| 채점 | `verify_summaries` 재사용 | 인용 실재율·coverage FAIL(발명·오인용)·(옵션)매설 검출률 |
+| 채점 | `verify_summaries` 재사용 | **Evidence 수치·직접인용 실재율**·coverage FAIL(발명·오인용)·(옵션)매설 검출률 — 질적 주장은 범위 밖(§지표 범위·한계) |
 
 ## 진행 흐름 (각 단계 질문으로 종료)
 
@@ -54,15 +54,28 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/team_compare.p
   유입됐는지·reviewer가 잡았는지 **매설 검출률**을 결정론으로 채점한다.
 
 **④ 비교 리포트 읽기** — `▶ [4/4] 해석 — 어느 팀이 근거에 충실했나`
-- `80-reports/team-compare-report.md`(+`.json`): 팀별 **인용 실재율·coverage FAIL·reviewer
-  지적 건수·(옵션)매설 검출률** 표. 해석: 인용 실재율이 낮거나 coverage FAIL이 있는 producer는
-  근거에서 벗어난 것이고, **교차 벤더 reviewer가 그것을 지적했는지**가 이 랩의 관전 포인트다.
+- `80-reports/team-compare-report.md`(+`.json`): 팀별 **Evidence 실재율(수치·직접인용)·coverage
+  FAIL·reviewer 지적 건수·(옵션)매설 검출률** 표. 해석: 실재율이 낮거나 coverage FAIL이 있는
+  producer는 인용 성분이 원문에서 벗어난 것이고, **교차 벤더 reviewer가 그것을 지적했는지**가
+  이 랩의 관전 포인트다.
+
+## ⚠ 지표 범위·한계 (반드시 함께 읽기 — 과신 방지)
+**'Evidence 실재율'이 검증하는 것은 좁다**: producer 요약 **Evidence 절의 수치·12자+ 직접인용이
+원문 초록에 글자 그대로(substring) 실재하는지**만 본다. **Summary·Why의 qualitative(질적) 주장·
+의미 왜곡·과장은 이 지표가 검증하지 않는다.** 예: 원문에 실재하는 인용 한 개만 Evidence에 넣고
+Summary에는 원문에 없는 허위 주장(예: "환자 개인정보를 전송한다")을 채워도 이 지표만으론
+실재율 100%·coverage FAIL 0이 나올 수 있다. 그래서:
+- 리포트는 needle(검증 가능 성분) 수가 임계(기본 3) 미만이면 **⚠low-evidence**로 표시한다 —
+  이때 100%는 "근거 충실"이 아니라 "검증할 성분이 거의 없었다"는 뜻이니 과신하지 마라.
+- 이 지표는 **reviewer 검수 후보·본문 정독과 병행 해석**해야 한다. 질적 허위는 결정론 채점이
+  못 보므로, 교차 벤더 reviewer의 지적이 그 사각을 메우는 보완 신호다.
 
 ## 해석 가이드 (무엇을 배우나)
 - **단일 벤더 함정**: producer와 reviewer가 같은 벤더면 같은 맹점을 공유해 미탐이 남는다.
   역조합 2팀을 비교하면 "누가 만들고 누가 봤는지"에 따라 잡히는 결함이 달라지는 걸 본다.
-- **결정론 채점의 역할**: LLM reviewer의 지적은 후보일 뿐, 최종 판정은 verify_summaries의
-  원문 대조가 한다 — reviewer가 놓쳐도 coverage FAIL로 발명·오인용이 드러난다.
+- **결정론 채점의 역할과 경계**: LLM reviewer의 지적은 후보일 뿐, 인용 성분의 최종 판정은
+  verify_summaries의 원문 대조가 한다 — reviewer가 놓쳐도 coverage FAIL로 발명·오인용이 드러난다.
+  단 위 한계대로 **질적 허위는 이 채점의 범위 밖**이다.
 - 이 랩은 축소판이다. 실제 서베이에서는 RUNBOOK §6 3중 검증(producer≠evaluator)으로 확장된다.
 
 ## 실측 관찰 (개발 중 E2E — 원인 규명·수정 완료, 정직 기록)

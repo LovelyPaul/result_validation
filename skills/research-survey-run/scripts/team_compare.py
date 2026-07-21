@@ -35,6 +35,7 @@ Windows npm .CMD 심이 개행 포함 인자를 **첫 개행에서 절단**해 p
 """
 import argparse
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -48,6 +49,30 @@ TEAMS_REL = "00-system/teams.json"
 CORPUS_REL = "60-data/corpus.json"
 DRAFTS_REL = "40-drafts"
 REPORTS_REL = "80-reports"
+LOW_EVIDENCE_MIN = 3   # 검증 가능 needle(수치·직접인용) 수 임계 — 미만이면 low-evidence 플래그(R2 [3])
+
+# team_id·paper id 경로 위생(R2 [2]): 영숫자로 시작 + 영숫자·._- 만. arXiv id의 점(2303.08896)은
+# 허용하되 '..'(상위참조)·경로 구분자·절대경로는 첫 글자 규칙+아래 명시 검사로 거부.
+_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _safe_id(value, kind):
+    """식별자 경로 위생 검증 — 위반은 SystemExit(fail-closed). '.'·'..'·구분자·절대경로 거부."""
+    v = str(value)
+    if not _SAFE_ID.fullmatch(v) or ".." in v or "/" in v or "\\" in v:
+        raise SystemExit(
+            f"{kind} 식별자 경로 위생 위반: {value!r} — 영숫자로 시작하고 영숫자·. _ - 만 "
+            f"허용된다(경로 구분자·'..'·절대경로 금지). 팀/논문 id를 안전한 값으로 바꿔라.")
+    return v
+
+
+def _ensure_within(path, root, label):
+    """resolve한 대상이 허용 root 하위인지 fail-closed 확인(R2 [2] — 작업영역 이탈 차단)."""
+    rp = Path(path).resolve()
+    rr = Path(root).resolve()
+    if not rp.is_relative_to(rr):
+        raise SystemExit(f"{label} 작업영역 이탈: {rp} 는 {rr} 하위가 아니다 — 쓰기 거부.")
+    return rp
 
 PRODUCER_PROMPT = (
     "다음 논문 초록만 근거로 요약하라. 초록에 없는 수치·주장은 절대 지어내지 마라.\n"
@@ -100,17 +125,20 @@ def _default_runner(argv, cwd, prompt, timeout=300):
 
 def grade_summary(summary_text, paper):
     """결정론 채점 — producer 요약을 초록 대조. verify_summaries 재사용(이중 구현 금지).
-    반환: {needles, absent, citation_existence_rate, fails}."""
+    ★지표 범위 한정(R2 [3]): citation_existence_rate는 **Evidence의 수치·직접인용(12자+ 따옴표)
+    substring 실재율만** 측정한다 — qualitative 주장·의미 오용은 검사 범위 밖(reviewer 검수와
+    병행 해석해야 함). needle(검증 가능 성분) 수가 LOW_EVIDENCE_MIN 미만이면 low_evidence=True
+    로 표시해 '실재 인용 1개 + 허위 Summary' 조합이 100%로 과신되는 것을 드러낸다.
+    반환: {needles, absent, citation_existence_rate, low_evidence, fails}."""
     corpus_by_id = {str(paper["id"]): paper}
     src_text, _abstract, why = resolve_source(summary_text, corpus_by_id, None)
     if src_text is None:
         # arXiv id를 요약이 안 달았어도 대상 논문 초록으로 직접 대조(fail-closed 회피 — 대상 확정 상황)
         src_text = (paper.get("title") or "") + " " + (paper.get("abstract") or "")
-    import re as _re
     from verify_summaries import extract_claim_numbers, extract_claim_quotes, EVIDENCE_SEC
     # provenance 메타(source_pdf: <파일>) 라인은 claim이 아니므로 채점서 제외 — 파일명의
     # 숫자가 수치 주장으로 오인식되는 것을 막는다(예: source_pdf: 1.pdf 의 '1').
-    cleaned = _re.sub(r"(?m)^\s*source_pdf:.*$", "", summary_text)
+    cleaned = re.sub(r"(?m)^\s*source_pdf:.*$", "", summary_text)
     # producer 요약은 이미 ## Evidence 섹션을 가지므로 그대로 대조 — 있으면 그 절만, 없으면 전체를
     # Evidence로 감싸 검사(중복 헤더 삽입 금지 — EVIDENCE_SEC가 엉뚱한 절을 잡지 않게).
     graded = cleaned if EVIDENCE_SEC.search(cleaned) else "## Evidence\n" + cleaned
@@ -121,34 +149,46 @@ def grade_summary(summary_text, paper):
     absent = len(fails)
     rate = round(1 - absent / total, 4) if total else None
     return {"needles": total, "absent": absent,
-            "citation_existence_rate": rate, "fails": [str(f) for f in fails]}
+            "citation_existence_rate": rate,
+            "low_evidence": total < LOW_EVIDENCE_MIN,
+            "fails": [str(f) for f in fails]}
 
 
 def _parse_review(reviewer_out):
-    """reviewer 출력 결정론 파싱 → (flagged 리스트, checked). 반환:
-    - checked=True  : `{"flagged": [...]}` JSON을 실제로 받음(빈 리스트여도 '검수함').
-    - checked=False : JSON/flagged 키 부재 = **검수 불능(unchecked)** — 비수신·비응답을
-      '지적 0건 무결'로 위장 집계하지 않는다(R1 1b·위장 무결 차단).
+    """reviewer 출력 결정론 파싱 → (flagged 리스트, checked). **스키마 엄격**(R2 [1]):
+    - checked=True  : root가 object이고 flagged가 **list이며 모든 원소가 비어있지 않은 string**
+      일 때만(빈 리스트=검수함·0건). `{"flagged":[]}` 대조군은 checked=True.
+    - checked=False : JSON 부재·비object·flagged 키 부재·flagged가 null/string/number/object·
+      비string 원소·빈 문자열 포함 = **검수 불능(unchecked)**. schema-invalid JSON도 unchecked로
+      막는다(null→[]·string→문자별 리스트로 위장 통과하던 우회 봉쇄·위장 무결 차단).
     """
-    import re
     m = re.search(r"\{.*\}", reviewer_out or "", re.S)
     if not m:
         return [], False
     try:
         obj = json.loads(m.group(0))
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, ValueError):
         return [], False
-    if "flagged" not in obj:
+    if not isinstance(obj, dict) or "flagged" not in obj:
         return [], False
-    return [str(x) for x in (obj.get("flagged") or [])], True
+    flagged = obj["flagged"]
+    if not isinstance(flagged, list):
+        return [], False   # null·string·number·object 모두 거부
+    if not all(isinstance(x, str) and x.strip() for x in flagged):
+        return [], False   # 비string 원소·빈 문자열 → 스키마 무효
+    return list(flagged), True
 
 
 def run_team(team, paper, workspace, runner, seeded=None):
-    """한 팀: producer 요약 → reviewer 검수 → 결정론 채점. 작업영역 분리."""
+    """한 팀: producer 요약 → reviewer 검수 → 결정론 채점. 작업영역 분리.
+    ★쓰기 전 team_id·paper id 경로 위생 검증 + 작업영역 봉쇄 확인(R2 [2] — RUNBOOK 산출물
+    위치 안전핀·팀별 격리 유지)."""
     ws = Path(workspace)
-    tdir = ws / DRAFTS_REL / team["team_id"]
+    tid = _safe_id(team["team_id"], "team_id")
+    aid = _safe_id(paper["id"], "paper id")
+    drafts_root = ws / DRAFTS_REL
+    tdir = _ensure_within(drafts_root / tid, drafts_root, "팀 작업영역")
     tdir.mkdir(parents=True, exist_ok=True)
-    aid = str(paper["id"])
 
     pr = team["producer"]
     p_argv = _resolve_invocation(pr["cli"], pr["cmd_template"], pr.get("model", ""))
@@ -209,6 +249,13 @@ def run(workspace, teams_path, corpus_path, ids=None, limit=1, yes=False,
     teams = (json.loads(Path(teams_path).read_text(encoding="utf-8")).get("teams") or [])
     if not teams:
         raise SystemExit(f"teams 정의 0건: {teams_path}")
+    # team_id 사전 위생 검증 + 중복 거부(R2 [2] — 팀별 격리·경로 안전이 실행 전에 확정돼야)
+    seen_tids = set()
+    for t in teams:
+        tid = _safe_id(t.get("team_id", ""), "team_id")
+        if tid in seen_tids:
+            raise SystemExit(f"중복 team_id: {tid!r} — 팀별 작업영역이 겹친다(고유해야 한다).")
+        seen_tids.add(tid)
     papers = load_papers(corpus_path, ids, limit)
     if not papers:
         raise SystemExit("대상 논문 0편 — --ids 또는 코퍼스를 확인하라.")
@@ -240,24 +287,34 @@ def run(workspace, teams_path, corpus_path, ids=None, limit=1, yes=False,
 def _render_md(report):
     lines = ["# team-compare 결과 (결정론 채점)", "",
              f"팀 {report['teams']} · 논문 {report['papers']} · 실 LLM 호출 {report['calls']}회", "",
-             "| 팀 | 논문 | producer | reviewer | 인용 실재율 | coverage FAIL | reviewer 지적 | 매설 검출률 |",
+             "| 팀 | 논문 | producer | reviewer | Evidence 실재율(수치·직접인용) | coverage FAIL | reviewer 지적 | 매설 검출률 |",
              "|---|---|---|---|---|---|---|---|"]
     for r in report["results"]:
         s = r["score"]
         seeded = r.get("seeded") or {}
         # rate None = 집계 불가 (producer 요약에 Evidence needle 0 — 비응답·형식 미준수 등)
         if s["citation_existence_rate"] is None:
-            cr = "집계 불가(Evidence needle 0)"
+            cr = "집계 불가(needle 0)"
         else:
-            cr = f"{s['citation_existence_rate']*100:.0f}%"
+            cr = f"{s['citation_existence_rate']*100:.0f}% (needle {s['needles']})"
+            if s.get("low_evidence"):   # needle < 임계 — 100%라도 과신 금지(R2 [3])
+                cr += f" ⚠low-evidence(<{LOW_EVIDENCE_MIN})"
         # reviewer 비수신·비응답이면 '0건'이 아니라 unchecked (위장 무결 차단)
         rv = f"{len(r['reviewer_flagged'])}건" if r.get("reviewer_checked") else "unchecked(검수 불능)"
         sd = "" if not seeded or seeded.get("catch_rate") is None else f"{seeded['catch_rate']*100:.0f}% ({len(seeded['caught'])}/{len(seeded['leaked'])})"
         lines.append(f"| {r['team_id']} | {r['paper']} | {r['producer']} | {r['reviewer']} | "
                      f"{cr} | {s['absent']}건 | {rv} | {sd} |")
-    lines += ["", "## 해석", "- **인용 실재율**: producer 요약의 Evidence 수치·인용이 원문 초록에 실재하는 비율(높을수록 근거 충실). '집계 불가'=요약이 형식·근거를 못 갖춰 대조할 needle이 없음(producer 실패).",
-              "- **coverage FAIL**: 원문 부재 수치·인용 건수(발명·오인용 — 낮을수록 좋음).",
-              "- **reviewer 지적**: 교차 벤더 reviewer가 오류 후보로 든 건수. **unchecked**=reviewer 비수신·비응답(JSON 미반환) — 지적 0건과 구분(비응답을 '무결'로 위장 집계하지 않는다).",
+    lines += ["", "## 해석 (지표 범위 — 정직하게 읽기)",
+              "- **Evidence 실재율(수치·직접인용)**: producer 요약 **Evidence 절의 수치·12자+ 직접인용**이 "
+              "원문 초록에 substring으로 실재하는 비율. **이것만** 본다 — Summary/Why의 **qualitative "
+              "주장·의미 오용은 검사 범위 밖**이다. '실재 인용 1개 + 원문에 없는 허위 Summary' 조합도 "
+              "이 지표만으론 100%가 될 수 있으므로, **needle 수가 적으면(⚠low-evidence) 100%를 근거 충실로 "
+              "과신하지 말고 reviewer 검수·본문 정독과 병행 해석**하라. '집계 불가'=needle 0(producer 형식·근거 실패).",
+              "- **coverage FAIL**: Evidence의 수치·직접인용 중 원문 부재 건수(발명·오인용 — 낮을수록 좋음). "
+              "이 역시 qualitative 허위는 못 잡는다.",
+              "- **reviewer 지적**: 교차 벤더 reviewer가 오류 후보로 든 건수. **unchecked**=reviewer 비수신·비응답·"
+              "스키마 무효 JSON(지적 0건과 구분 — 비응답을 '무결'로 위장 집계하지 않는다). qualitative 오류는 "
+              "결정론 채점이 못 보므로 이 reviewer 후보가 보완 신호다.",
               "- **매설 검출률**(--seeded): 매설 오류가 요약에 유입됐을 때 reviewer가 잡은 비율.",
               "- 판정·집계는 전부 결정론 채점기(verify_summaries) — LLM 출력을 점수 근거로 쓰지 않는다."]
     return "\n".join(lines) + "\n"
@@ -302,6 +359,19 @@ def _self_test():
         failures.append("비JSON 비응답은 unchecked(checked=False)여야")
     if _parse_review('{"note": "no flagged key"}') != ([], False):
         failures.append("flagged 키 부재는 unchecked여야")
+    # R2 [1]: schema-invalid JSON은 unchecked — null·string·number·비string원소·빈문자열 전부 거부
+    for bad_json, label in (('{"flagged": null}', "null"),
+                            ('{"flagged": "ABC"}', "string"),
+                            ('{"flagged": 5}', "number"),
+                            ('{"flagged": {"a": 1}}', "object"),
+                            ('{"flagged": ["ok", 7]}', "혼합(비string 원소)"),
+                            ('{"flagged": ["ok", "  "]}', "빈 문자열 원소"),
+                            ('["not", "object"]', "root 비object")):
+        if _parse_review(bad_json) != ([], False):
+            failures.append(f"R2 스키마 무효({label})를 unchecked로 안 막음: {_parse_review(bad_json)}")
+    # 유효 대조군은 여전히 checked=True (회귀 방지)
+    if _parse_review('{"flagged": ["진짜 지적"]}') != (["진짜 지적"], True):
+        failures.append("유효 flagged 대조군 회귀")
 
     # 단위: 채점 — 충실 요약(94.2·seven 실재)=FAIL 0 / 발명 요약(88.8·999)=FAIL
     good = "## Summary\nx\n## Why\ny\n## Evidence\n- 94.2% accuracy · seven datasets\nsource_pdf: 1.pdf — arXiv:1234.56789\n"
@@ -311,8 +381,37 @@ def _self_test():
     bs = grade_summary(bad, paper)
     if gs["absent"] != 0 or gs["citation_existence_rate"] != 1.0:
         failures.append(f"충실 요약 채점 오류: {gs}")
+    if gs.get("low_evidence"):   # needle 2(<3)면 low_evidence여야 — good은 needle 2
+        pass   # good은 needle 2라 low_evidence=True가 정상(아래 별도 단언에서 확인)
     if bs["absent"] < 1 or "88.8" not in " ".join(bs["fails"]):
         failures.append(f"발명 요약 채점 오류: {bs}")
+
+    # R2 [3]: qualitative 우회 반례 — 실재 인용 1개 + 원문에 없는 허위 Summary → rate 1.0·FAIL 0
+    # 이지만 needle 1(<3)이라 low_evidence=True로 '전체 통과' 과신을 차단해야 한다.
+    fabricated = ("## Summary\n환자 개인정보를 외부로 전송하며 보편적 안전을 보장한다(원문에 없는 허위).\n"
+                  "## Why\nx\n## Evidence\n- \"a novel retrieval mechanism\"\n"
+                  "source_pdf: 1234.56789.pdf — arXiv:1234.56789\n")
+    fg = grade_summary(fabricated, paper)
+    if fg["citation_existence_rate"] != 1.0 or fg["absent"] != 0:
+        failures.append(f"qualitative 반례 채점 전제 오류: {fg}")
+    if not fg["low_evidence"] or fg["needles"] >= LOW_EVIDENCE_MIN:
+        failures.append(f"qualitative 반례가 low-evidence로 안 잡힘(100% 과신 위험): {fg}")
+    # 리포트 렌더에 low-evidence 경고가 실제로 표기되는지(전체 통과로 표현 안 됨)
+    fake_rep = {"teams": 1, "papers": ["1234.56789"], "calls": 2, "results": [
+        {"team_id": "A", "paper": "1234.56789", "producer": "x:m", "reviewer": "y:m",
+         "score": fg, "reviewer_flagged": [], "reviewer_checked": True}]}
+    if "low-evidence" not in _render_md(fake_rep):
+        failures.append("리포트에 low-evidence 경고 미표기(qualitative 과신 방지 실패)")
+
+    # R2 [2]: 식별자 경로 위생 — arXiv id(점 포함)는 허용, 이탈 시도는 거부
+    if _safe_id("2303.08896", "paper id") != "2303.08896":
+        failures.append("정상 arXiv id(점 포함)를 거부함")
+    for bad_id in ("../../outside-team", "../../../outside-paper", "/abs", "a/b", "a\\b", "..", "."):
+        try:
+            _safe_id(bad_id, "test")
+            failures.append(f"경로 위생 위반 미거부: {bad_id!r}")
+        except SystemExit:
+            pass
 
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)
@@ -359,6 +458,47 @@ def _self_test():
         for tid in ("A", "B"):
             if not (ws / DRAFTS_REL / tid / "1234.56789.md").exists():
                 failures.append(f"팀 {tid} 분리 작업영역 미생성")
+
+        # R2 [2]: 경로 이탈 team_id → 쓰기 전 SystemExit·workspace 밖 파일 미생성
+        esc_teams = {"teams": [{"team_id": "../../outside-team",
+                                "producer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"},
+                                "reviewer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"}}]}
+        (ws / TEAMS_REL).write_text(json.dumps(esc_teams), encoding="utf-8")
+        def bomb_runner(argv, cwd, prompt, timeout=300):
+            failures.append("경로 이탈 team_id인데 runner가 호출됨(쓰기 발생 위험)")
+            return good
+        try:
+            run(str(ws), ws / TEAMS_REL, ws / CORPUS_REL, yes=True, runner=bomb_runner)
+            failures.append("경로 이탈 team_id를 거부하지 않음")
+        except SystemExit as e:
+            if "위생 위반" not in str(e):
+                failures.append(f"경로 이탈 진단 메시지 이상: {e}")
+        if (Path(d).parent / "outside-team").exists():
+            failures.append("경로 이탈 team_id가 workspace 밖에 파일을 씀")
+        # R2 [2]: 경로 이탈 paper id → run_team 진입 시 SystemExit
+        try:
+            run_team({"team_id": "A", "producer": {"cli": "python", "cmd_template": "-c {model}"},
+                      "reviewer": {"cli": "python", "cmd_template": "-c {model}"}},
+                     {"id": "../../../outside-paper", "title": "t", "abstract": ABS},
+                     str(ws), bomb_runner)
+            failures.append("경로 이탈 paper id를 거부하지 않음")
+        except SystemExit as e:
+            if "위생 위반" not in str(e):
+                failures.append(f"paper id 이탈 진단 이상: {e}")
+        # R2 [2]: 중복 team_id → SystemExit
+        dup_teams = {"teams": [
+            {"team_id": "A", "producer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"},
+             "reviewer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"}},
+            {"team_id": "A", "producer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"},
+             "reviewer": {"cli": "python", "cmd_template": "-c {model}", "model": "p"}}]}
+        (ws / TEAMS_REL).write_text(json.dumps(dup_teams), encoding="utf-8")
+        try:
+            run(str(ws), ws / TEAMS_REL, ws / CORPUS_REL, yes=True, runner=bomb_runner)
+            failures.append("중복 team_id를 거부하지 않음")
+        except SystemExit as e:
+            if "중복 team_id" not in str(e):
+                failures.append(f"중복 team_id 진단 이상: {e}")
+        (ws / TEAMS_REL).write_text(json.dumps(teams), encoding="utf-8")   # 원복
 
         # R1 1b: reviewer 비응답(JSON 미반환) → unchecked 구분(위장 무결 차단)
         def mute_reviewer(argv, cwd, prompt, timeout=300):
