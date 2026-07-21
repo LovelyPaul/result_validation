@@ -2,6 +2,24 @@
 
 All notable changes to this plugin are documented here (Keep a Changelog style).
 
+## [0.7.1] - 2026-07-21
+
+### Added (사용자 워크스페이스 자기소개 어댑터 — clone repo와 동일한 세션 시작 경험, 오너 승인)
+- **템플릿 워크스페이스 `AGENTS.md` 신설**: init이 찍는 사용자 워크스페이스가 clone+cd repo처럼
+  세션 시작 시 자기소개하도록 갭을 메운다. **운영 에이전트 톤**(튜토리얼 진행자가 아니라 "이
+  사용자의 연구 워크스페이스를 이어 운영하는 담당") — 구체 작업 지시 없이 열렸을 때 ①PROJECT_STATUS.md
+  ·`_meta/run-state.json`·taxonomy 카테고리를 **실측**해 진행 상황 파악 ②상태별 다음 액션 제안
+  (시작 전/진행 중/정본 쌓임). **★환각 0 빈 상태 정직**: 진행 이력이 없으면 '아직 서베이 시작
+  전'으로 안내하고 가짜 진행률·산출물을 지어내지 않는다.
+- **CLAUDE.md 연결(최소 침습)**: CLAUDE.md 최상단에 `@AGENTS.md` import 1줄 + 안내 blockquote만
+  추가 — **12섹션 본문·번호는 무손상**(import는 섹션 밖). repo-root CLAUDE.md=@AGENTS.md 패턴과
+  정합·하네스 7-layer instruction surface 확장. `_meta/deviations.md`에 기록.
+- **init 스캐폴드 포함**: research-survey-init SKILL의 복사 파일 목록·치환 대상에 `AGENTS.md` 추가
+  (`<프로젝트명>` 치환 포함) — 생성 워크스페이스에 자기소개 어댑터가 반드시 포함된다.
+
+### Changed
+- `plugin.json`·RUNBOOK·DEMO frontmatter version 0.7.1. README 2종 init 스킬 설명에 자기소개 어댑터 반영.
+
 ## [0.7.0] - 2026-07-21
 
 ### Added (P2 5건 — COMPARATIVE_ANALYSIS P2 · gemini 2nd-wave #3·#5·#11 · km D4/D5 · codex#9, 오너 승인)

@@ -32,9 +32,10 @@ workspace-standards(10단위 넘버링·CLAUDE.md 12섹션·메타파일)를 준
    원본: ${CLAUDE_PLUGIN_ROOT}/skills/research-survey-main/assets/templates/workspace/
    대상: <위치>/<프로젝트명>/
    ```
-   포함: `CLAUDE.md`·`README.md`·`PROJECT_STATUS.md`·`CHANGELOG.md`·`.gitignore`·`_meta/deviations.md` +
+   포함: `CLAUDE.md`·`AGENTS.md`(세션 시작 자기소개 어댑터 — CLAUDE.md가 `@AGENTS.md`로
+   참조)·`README.md`·`PROJECT_STATUS.md`·`CHANGELOG.md`·`.gitignore`·`_meta/deviations.md` +
    `00-system`~`90-archive`(10단위, 빈 폴더는 `.gitkeep`) + `.claude/{commands,agents,skills}`.
-3. **치환**: `<프로젝트명>`은 `CLAUDE.md`·`README.md`에서, `<YYYY-MM-DD>`는 `CHANGELOG.md`에서
+3. **치환**: `<프로젝트명>`은 `CLAUDE.md`·`AGENTS.md`·`README.md`에서, `<YYYY-MM-DD>`는 `CHANGELOG.md`에서
    실제 값으로(오늘 날짜는 `date`/`Get-Date`로 실측 — 추정 금지). `00-system/`에 `taxonomy.json`을
    `templates/taxonomy.template.json`에서 복사하고 관심 주제를 카테고리로 시드(`example-topic`은 교체).
 4. `30-templates/`에 `TEMPLATE_survey.md`(= survey_section.md)와 대조표 HTML을 배치.

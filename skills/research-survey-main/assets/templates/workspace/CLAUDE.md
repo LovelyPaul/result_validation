@@ -2,6 +2,12 @@
 
 한 줄 설명: 관심 연구 주제로 논문을 지속 서베이하는 전용 워크스페이스(One Workspace, One Agent).
 
+> **세션 시작 안내는 [@AGENTS.md](./AGENTS.md)를 따른다** — 구체 작업 지시 없이 이 워크스페이스를
+> 열었을 때 진행 상황(PROJECT_STATUS·run-state)을 실측해 다음 액션을 제안하는 운영 에이전트
+> 자기소개다. 아래 12섹션은 운영 규약 정본이며 그대로 유지된다.
+
+@AGENTS.md
+
 ## 1. 대상 런타임
 Claude Code (+ `research-survey` 플러그인). 분류·검수 스크립트는 python3(표준 라이브러리)만 요구.
 
