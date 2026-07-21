@@ -17,6 +17,20 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
 - **init 스캐폴드 포함**: research-survey-init SKILL의 복사 파일 목록·치환 대상에 `AGENTS.md` 추가
   (`<프로젝트명>` 치환 포함) — 생성 워크스페이스에 자기소개 어댑터가 반드시 포함된다.
 
+### Fixed (R1 — reviewer-codex REVISE major 1 + minor 1, claude-1 minor 1)
+- **(major·codex) 워크스페이스 AGENTS.md 세션시작 안내 실행 가능화**: 사용자 워크스페이스는
+  플러그인 content가 아니라 `${CLAUDE_PLUGIN_ROOT}` 치환이 풀리지 않고 bare 스크립트명
+  (wiki_index/corpus_fetch/wiki_query/wiki_promote/run_state)도 PATH에 없어 안내의 명령이 실행
+  불가였다(codex 지적). 세션시작 안내를 **① 진행 파악=상태 파일 직접 Read**(PROJECT_STATUS.md·
+  `_meta/run-state.json` JSON·taxonomy.json·corpus.json 존재 — 명령 불요) **② 다음 액션=등록
+  커맨드(`/research-survey run`·`help`)와 '플러그인 스킬(research-survey-run)이 실행' 경유**로
+  재작성. 직접 스크립트 경로 호출 지시 전면 제거(codex 대안 route 신설은 v0.7.1 범위 밖이라 미채택).
+- **(minor·codex) resume 문구 정합**: "`<단계>까지 됨"이 '시작 전'·corpus 존재 조건과 충돌하던 것을
+  정정 — run-state의 `resume` 값을 그대로 인용하고, '~까지 됨(done)'은 run-state가 실제 done을
+  기록했을 때만·resume=null이면 '한 사이클 완료'로 안내.
+- **(minor·claude-1) 상태 불일치 정직 보고**: PROJECT_STATUS.md(수동 요약)와 run-state.json(도구
+  기록)이 어긋나면 임의로 한쪽을 우선하지 말고 둘 다 그대로 보고하라는 1줄 추가.
+
 ### Changed
 - `plugin.json`·RUNBOOK·DEMO frontmatter version 0.7.1. README 2종 init 스킬 설명에 자기소개 어댑터 반영.
 

@@ -12,35 +12,45 @@
 사용자가 특정 작업을 지시하지 않고 세션을 열었다면, 아래를 **순서대로** 수행해 현재 상태를
 파악하고 다음 액션을 제안한다. **추측 금지 — 아래 파일을 실제로 읽고 있는 것만 말한다(환각 0).**
 
-1. **진행 상황 파악 (실측)**:
-   - `PROJECT_STATUS.md`를 읽어 단계별 상태·진행률을 본다.
-   - `_meta/run-state.json`이 **있으면** 읽어 run 사이클의 재개 포인터(첫 비-done 단계)를 본다.
-     ```
-     python "${CLAUDE_PLUGIN_ROOT}/skills/research-survey-run/scripts/run_state.py" --workspace . show
-     ```
-   - `00-system/taxonomy.json`의 카테고리(관심 주제)를 확인한다.
-   - (선택) `wiki_index.py --workspace . --audit`로 위키 건강도(노트 수·stale·MOC 제안·미해소
-     Open Questions)를 본다 — 쌓인 정본이 있을 때만 의미 있다.
+1. **진행 상황 파악 (파일 직접 읽기 — 스크립트 경로 호출 불요)**:
+   이 워크스페이스에는 플러그인 스크립트가 PATH에 없고 `${CLAUDE_PLUGIN_ROOT}` 같은 치환도
+   사용자 파일에선 풀리지 않는다. 그러니 아래 상태 파일을 **Read로 직접 읽어** 파악한다:
+   - `PROJECT_STATUS.md` — 단계별 상태·진행률(사람이 갱신하는 요약).
+   - `_meta/run-state.json` — **있으면** JSON을 직접 읽어 `resume`(첫 비-done 단계)·각 stage의
+     status를 본다. 파일이 없으면 "run 사이클 상태 기록 없음"으로 취급(만들어내지 않는다).
+   - `00-system/taxonomy.json` — 카테고리(관심 주제) 목록.
+   - `60-data/corpus.json` 존재 여부 — 코퍼스가 실제로 반입됐는지(파일 있음/없음만 확인).
+   - 위키 정본은 `20-knowledge-base/wiki/notes/`에 `.md`가 있는지로 판단. 상세 건강도(stale·
+     MOC 제안·Open Questions)는 필요할 때 **커맨드로** 실행한다(3번 참조) — 여기서 스크립트를
+     직접 호출하지 않는다.
 
 2. **정직한 상태 판정 (★환각 0 — 가짜 진행률 금지)**:
    - `PROJECT_STATUS.md`가 전부 "대기 · 0%"이고 `_meta/run-state.json`이 **없거나** 전 단계
-     pending이면 → **"아직 서베이 시작 전입니다"**라고 정직하게 안내한다. 진행된 적 없는
-     산출물·수치를 지어내지 않는다.
-   - 일부라도 진행됐으면(코퍼스 있음·분류 결과 있음·노트 승격됨) 그 **실제 상태만** 요약한다.
-     "확인 안 됨"은 확인 안 됨이라고 말한다.
+     pending이며 `60-data/corpus.json`도 없으면 → **"아직 서베이 시작 전입니다"**라고 정직하게
+     안내한다. 진행된 적 없는 산출물·수치·단계를 지어내지 않는다.
+   - 일부라도 진행됐으면(코퍼스 파일 있음·`70-analysis/` 분류 결과 있음·wiki notes 있음) 그
+     **실제로 읽어 확인한 것만** 요약한다. "확인 안 됨"은 확인 안 됨이라고 말한다.
+   - **PROJECT_STATUS.md(수동 요약)와 run-state.json(도구 기록)이 어긋나면** 임의로 한쪽을
+     우선하지 말고 **둘 다 그대로 보고**한다(예: "상태표엔 요약 진행 중인데 run-state는 verify
+     pending입니다 — 어느 쪽 기준으로 이어갈까요?").
 
-3. **다음 액션 제안 (상태에 맞게 — 질문으로 종료)**:
-   - **시작 전**: "관심 주제로 `00-system/taxonomy.json` 다이얼을 확인/조정하고, 코퍼스를
+3. **다음 액션 제안 (상태에 맞게 · 플러그인 커맨드/스킬 경유 · 질문으로 종료)**:
+   실행은 **등록된 커맨드로** 안내한다(직접 스크립트 경로 호출 지시 금지 — 사용자 환경에선
+   플러그인이 설치돼 있어야 그 스킬이 스크립트를 실행한다).
+   - **시작 전**: "`00-system/taxonomy.json` 다이얼을 관심 주제로 확인/조정하고, 코퍼스를
      `60-data/corpus.json`(범용 스키마)에 두었다면 `/research-survey run <카테고리>`로 첫
-     사이클을 돌릴까요? 논문을 새로 가져오려면 `corpus_fetch.py`로 반입할 수 있어요."
-   - **진행 중**: run-state 재개 포인터가 가리키는 단계부터 이어가기를 제안 —
-     "지난번 `<단계>`까지 됐습니다. 거기서 이어서 `/research-survey run <카테고리>`를 계속할까요?"
-   - **정본이 쌓임**: "위키에 검증된 노트가 쌓여 있어요. 특정 질문으로 되찾아 보려면
-     `wiki_query.py`로 검색하거나, 30일 감사(`wiki_index --audit`)로 stale·Open Questions를
-     점검할까요?" · 새 주제로 넓히려면 "다이얼(taxonomy.json)에 카테고리를 추가"를 안내.
+     사이클을 돌릴까요? (논문 반입·분류·요약·검증은 research-survey-run 스킬이 실행합니다.)"
+   - **진행 중**: run-state의 `resume`가 가리키는 단계를 그대로 인용해 이어가기를 제안 —
+     "run-state 기준 다음 단계는 `<resume 값>`입니다. `/research-survey run <카테고리>`로 이어서
+     진행할까요?" (resume가 null이면 '한 사이클 완료' 상태로 안내 — '~까지 됨'은 run-state가
+     실제로 done을 기록했을 때만 말한다.)
+   - **정본이 쌓임**(wiki notes 존재): "검증된 노트가 쌓여 있어요 — `/research-survey run`으로
+     이어가거나, 위키 검색·30일 감사(stale·MOC 제안·Open Questions 점검)는 research-survey-run
+     스킬로 돌릴 수 있어요. 새 주제로 넓히려면 taxonomy.json에 카테고리를 추가하면 됩니다."
+   - 잘 모르겠으면 `/research-survey help`로 사용법을 안내한다.
 
 ## 경계·안전핀 (CLAUDE.md §2·§12와 동일 — 여기서도 유효)
 - 산출물은 이 워크스페이스의 `40-drafts/`·`50-output/`·`80-reports/`·`artifacts/`에만 쓴다.
-- 정본(20-knowledge-base/wiki) 직접 쓰기 금지 — `wiki_promote` 게이트(dry-run→승인→apply)만.
-- 외부 발행(git push·업로드·공개)·비가역 삭제는 사용자 승인 후에만. 각 단계는 질문으로 종료.
-- 카운트·게이트·판정은 결정론 스크립트 출력으로만 확정한다(추측·눈대중 금지).
+- 정본(20-knowledge-base/wiki) 직접 쓰기 금지 — 승격 게이트(dry-run→승인→apply)만(플러그인
+  스킬이 실행). 외부 발행(git push·업로드·공개)·비가역 삭제는 사용자 승인 후에만. 각 단계 질문 종료.
+- 카운트·게이트·판정은 결정론 도구 출력으로만 확정한다(추측·눈대중 금지).
