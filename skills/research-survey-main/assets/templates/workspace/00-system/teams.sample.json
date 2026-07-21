@@ -12,8 +12,8 @@
       "reviewer": {"cli": "codex", "cmd_template": "exec --skip-git-repo-check -m {model}", "model": "gpt-5.6-sol"}
     }
   ],
-  "_examples_미설치_CLI_예시_참고용": {
-    "_note": "이 머신에 있으면 teams 배열로 옮겨 쓸 수 있다. cmd_template의 {model}·{prompt} 치환 규칙: {prompt} 미포함 시 프롬프트가 마지막 argv로 자동 추가된다.",
+  "_examples_추가_CLI_참고용": {
+    "_note": "이 머신 실측(Get-Command): gemini·ollama·agy도 가용. 아래를 teams 배열의 producer/reviewer로 옮겨 다른 벤더 조합을 구성할 수 있다. 프롬프트는 stdin으로 전달되므로(개행 절단 회피) cmd_template에는 프롬프트 인자를 넣지 않는다 — {model}만 치환된다. 각 CLI의 헤드리스 stdin 프롬프트 수용은 소규모 실행으로 먼저 확인하라(CLI마다 stdin 처리가 다를 수 있음).",
     "gemini": {"cli": "gemini", "cmd_template": "-m {model} -p", "model": "gemini-2.5-pro"},
     "ollama": {"cli": "ollama", "cmd_template": "run {model}", "model": "llama3.1"}
   }

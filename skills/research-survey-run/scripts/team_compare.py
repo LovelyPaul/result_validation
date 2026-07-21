@@ -23,9 +23,12 @@
     (오염 유입) + reviewer가 그 오염을 오류 후보로 지적했는지(검출) 결정론 대조 → **매설 검출률**.
 
 비용 가드: 기본 **dry-run**(실 LLM 호출 0 — 호출 수·팀·논문 미리보기만). 실행하려면 `--yes`.
-버그 회피(review-workspaces 실주행 4종): ①Windows .ps1 npm shim은 shutil.which 해소 후
-powershell 라우팅 ②프롬프트는 argv 리스트(shell=False)로 전달해 인용 붕괴 회피
-③stdin=DEVNULL로 hang 방지 ④codex는 --skip-git-repo-check로 trusted-dir 거부 회피.
+버그 회피(review-workspaces 실주행 + v0.6.0 R1 실측): ①Windows .ps1/.cmd npm shim은
+shutil.which 해소 후 powershell 라우팅 ②★프롬프트는 **stdin**으로 전달한다 — argv로 넘기면
+Windows npm .CMD 심이 개행 포함 인자를 **첫 개행에서 절단**해 producer가 첫 줄만 받고
+비응답한다(R1 major 원인 입증·codex exec·claude -p 모두 stdin 수용) ③codex는
+--skip-git-repo-check로 trusted-dir 거부 회피 ④reviewer 비수신·비응답은 flagged=[]를
+'무결'로 오집계하지 않고 unchecked(검수 불능)로 구분(위장 무결 차단).
 
 의존: python3 표준 라이브러리만. 자체 검사: `python3 team_compare.py --self-test`
 (CLI 호출 0 — fake runner 주입으로 오케스트레이션·채점·invocation 빌드·dry-run 검증).
@@ -57,26 +60,34 @@ REVIEWER_PROMPT = (
     "원문 초록: {abstract}\n\n요약:\n{summary}\n")
 
 
-def _resolve_invocation(cli, cmd_template, model, prompt):
-    """CLI 호출 argv 빌드 (버그 4종 회피). 반환: argv 리스트(shell=False용).
-    .ps1 npm shim은 powershell -File 로 라우팅, 프롬프트는 마지막 argv 요소(인용 붕괴 회피)."""
-    exe = shutil.which(cli)
-    if not exe:
-        raise SystemExit(f"CLI 미설치: {cli!r} — teams.json에서 가용 CLI만 쓰거나 설치하라.")
-    args = shlex.split(cmd_template.format(model=model))
-    if "{prompt}" in args:
-        args = [prompt if a == "{prompt}" else a for a in args]
-    else:
-        args = args + [prompt]
-    if exe.lower().endswith(".ps1"):   # ① Windows npm shim — 직접 spawn 시 ENOENT
+def _wrap_shim(exe, args):
+    """Windows 심 라우팅(순수 함수·테스트 가능). 직접 spawn 시 ENOENT/확장자 오류가 나는
+    npm 심을 올바른 인터프리터로 감싼다: `.ps1`→powershell -File(.ps1 전용), `.cmd`/`.bat`→
+    cmd /c(powershell -File은 .ps1만 받으므로 .CMD를 거기 넣으면 실패 — R1 재실행에서 실측).
+    그 외(.exe 등)는 그대로."""
+    low = exe.lower()
+    if low.endswith(".ps1"):
         return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", exe, *args]
+    if low.endswith((".cmd", ".bat")):
+        return ["cmd", "/c", exe, *args]
     return [exe, *args]
 
 
-def _default_runner(argv, cwd, timeout=300):
-    """실 CLI 실행 — stdin=DEVNULL(③ hang 방지)·텍스트 캡처. 실패는 명시 진단."""
+def _resolve_invocation(cli, cmd_template, model):
+    """CLI 호출 argv 빌드 (프롬프트 제외 — 프롬프트는 stdin으로 전달). 반환: argv 리스트.
+    ★프롬프트를 argv에 넣지 않는다(R1): Windows npm .CMD/.ps1 심이 개행 포함 인자를 첫
+    개행에서 절단하기 때문. 심 종류별 인터프리터 라우팅은 _wrap_shim."""
+    exe = shutil.which(cli)
+    if not exe:
+        raise SystemExit(f"CLI 미설치: {cli!r} — teams.json에서 가용 CLI만 쓰거나 설치하라.")
+    return _wrap_shim(exe, shlex.split(cmd_template.format(model=model)))
+
+
+def _default_runner(argv, cwd, prompt, timeout=300):
+    """실 CLI 실행 — ★프롬프트를 stdin으로 전달(R1: argv 개행 절단 회피)·텍스트 캡처.
+    실패는 명시 진단. codex exec·claude -p 모두 stdin에서 프롬프트를 읽는다."""
     try:
-        p = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL,
+        p = subprocess.run(argv, cwd=cwd, input=prompt,
                            capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as e:
         raise SystemExit(f"실행 실패(경로/shim): {argv[0]} — {e}")
@@ -113,17 +124,23 @@ def grade_summary(summary_text, paper):
             "citation_existence_rate": rate, "fails": [str(f) for f in fails]}
 
 
-def _parse_flagged(reviewer_out):
-    """reviewer 출력에서 flagged 리스트 결정론 파싱 — JSON 블록 추출(실패 시 [])."""
+def _parse_review(reviewer_out):
+    """reviewer 출력 결정론 파싱 → (flagged 리스트, checked). 반환:
+    - checked=True  : `{"flagged": [...]}` JSON을 실제로 받음(빈 리스트여도 '검수함').
+    - checked=False : JSON/flagged 키 부재 = **검수 불능(unchecked)** — 비수신·비응답을
+      '지적 0건 무결'로 위장 집계하지 않는다(R1 1b·위장 무결 차단).
+    """
     import re
     m = re.search(r"\{.*\}", reviewer_out or "", re.S)
     if not m:
-        return []
+        return [], False
     try:
         obj = json.loads(m.group(0))
-        return [str(x) for x in (obj.get("flagged") or [])]
     except (json.JSONDecodeError, AttributeError):
-        return []
+        return [], False
+    if "flagged" not in obj:
+        return [], False
+    return [str(x) for x in (obj.get("flagged") or [])], True
 
 
 def run_team(team, paper, workspace, runner, seeded=None):
@@ -134,27 +151,27 @@ def run_team(team, paper, workspace, runner, seeded=None):
     aid = str(paper["id"])
 
     pr = team["producer"]
-    p_argv = _resolve_invocation(pr["cli"], pr["cmd_template"], pr.get("model", ""),
-                                 PRODUCER_PROMPT.format(aid=aid, title=paper.get("title", ""),
-                                                        abstract=paper.get("abstract", "")))
-    summary = runner(p_argv, str(tdir))
+    p_argv = _resolve_invocation(pr["cli"], pr["cmd_template"], pr.get("model", ""))
+    p_prompt = PRODUCER_PROMPT.format(aid=aid, title=paper.get("title", ""),
+                                      abstract=paper.get("abstract", ""))
+    summary = runner(p_argv, str(tdir), p_prompt)     # 프롬프트 stdin 전달(R1)
     (tdir / f"{aid}.md").write_text(summary, encoding="utf-8")
 
     rv = team["reviewer"]
-    r_argv = _resolve_invocation(rv["cli"], rv["cmd_template"], rv.get("model", ""),
-                                 REVIEWER_PROMPT.format(abstract=paper.get("abstract", ""),
-                                                        summary=summary))
-    review_out = runner(r_argv, str(tdir))
-    flagged = _parse_flagged(review_out)
+    r_argv = _resolve_invocation(rv["cli"], rv["cmd_template"], rv.get("model", ""))
+    r_prompt = REVIEWER_PROMPT.format(abstract=paper.get("abstract", ""), summary=summary)
+    review_out = runner(r_argv, str(tdir), r_prompt)
+    flagged, reviewer_checked = _parse_review(review_out)
     (tdir / f"{aid}.review.json").write_text(
-        json.dumps({"flagged": flagged, "raw": review_out}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
+        json.dumps({"flagged": flagged, "checked": reviewer_checked, "raw": review_out},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
 
     score = grade_summary(summary, paper)
     entry = {"team_id": team["team_id"], "paper": aid,
              "producer": f"{pr['cli']}:{pr.get('model', '')}",
              "reviewer": f"{rv['cli']}:{rv.get('model', '')}",
-             "score": score, "reviewer_flagged": flagged}
+             "score": score, "reviewer_flagged": flagged,
+             "reviewer_checked": reviewer_checked}
     if seeded is not None:
         leaked = [s for s in seeded if s in summary]       # 매설 문구가 요약에 유입됐나
         caught = [s for s in leaked if any(s in f for f in flagged)]  # reviewer가 그 유입을 지적했나
@@ -228,13 +245,19 @@ def _render_md(report):
     for r in report["results"]:
         s = r["score"]
         seeded = r.get("seeded") or {}
-        cr = "" if s["citation_existence_rate"] is None else f"{s['citation_existence_rate']*100:.0f}%"
+        # rate None = 집계 불가 (producer 요약에 Evidence needle 0 — 비응답·형식 미준수 등)
+        if s["citation_existence_rate"] is None:
+            cr = "집계 불가(Evidence needle 0)"
+        else:
+            cr = f"{s['citation_existence_rate']*100:.0f}%"
+        # reviewer 비수신·비응답이면 '0건'이 아니라 unchecked (위장 무결 차단)
+        rv = f"{len(r['reviewer_flagged'])}건" if r.get("reviewer_checked") else "unchecked(검수 불능)"
         sd = "" if not seeded or seeded.get("catch_rate") is None else f"{seeded['catch_rate']*100:.0f}% ({len(seeded['caught'])}/{len(seeded['leaked'])})"
         lines.append(f"| {r['team_id']} | {r['paper']} | {r['producer']} | {r['reviewer']} | "
-                     f"{cr} | {s['absent']}건 | {len(r['reviewer_flagged'])}건 | {sd} |")
-    lines += ["", "## 해석", "- **인용 실재율**: producer 요약의 Evidence 수치·인용이 원문 초록에 실재하는 비율(높을수록 근거 충실).",
+                     f"{cr} | {s['absent']}건 | {rv} | {sd} |")
+    lines += ["", "## 해석", "- **인용 실재율**: producer 요약의 Evidence 수치·인용이 원문 초록에 실재하는 비율(높을수록 근거 충실). '집계 불가'=요약이 형식·근거를 못 갖춰 대조할 needle이 없음(producer 실패).",
               "- **coverage FAIL**: 원문 부재 수치·인용 건수(발명·오인용 — 낮을수록 좋음).",
-              "- **reviewer 지적**: 교차 벤더 reviewer가 오류 후보로 든 건수.",
+              "- **reviewer 지적**: 교차 벤더 reviewer가 오류 후보로 든 건수. **unchecked**=reviewer 비수신·비응답(JSON 미반환) — 지적 0건과 구분(비응답을 '무결'로 위장 집계하지 않는다).",
               "- **매설 검출률**(--seeded): 매설 오류가 요약에 유입됐을 때 reviewer가 잡은 비율.",
               "- 판정·집계는 전부 결정론 채점기(verify_summaries) — LLM 출력을 점수 근거로 쓰지 않는다."]
     return "\n".join(lines) + "\n"
@@ -246,23 +269,39 @@ def _self_test():
     ABS = ("The system achieves 94.2% accuracy on the benchmark. It uses seven datasets "
            "and a novel retrieval mechanism.")
 
-    # 단위: invocation 빌드 — 프롬프트는 마지막 argv, codex는 skip-git-repo-check 포함
+    # 단위: invocation 빌드 — 프롬프트는 argv에 없음(stdin 전달·R1), codex 인자 포함
     try:
-        argv = _resolve_invocation("python", "exec --skip-git-repo-check -m {model}", "m1", "긴 프롬프트 \"인용\"")
-        # python은 which로 잡히므로 exe 경로 + args + prompt 형태
-        if argv[-1] != "긴 프롬프트 \"인용\"":
-            failures.append(f"프롬프트 마지막 argv 아님: {argv[-1]!r}")
-        if "--skip-git-repo-check" not in argv:
+        argv = _resolve_invocation("python", "exec --skip-git-repo-check -m {model}", "m1")
+        if "--skip-git-repo-check" not in argv or "m1" not in argv:
             failures.append(f"codex 템플릿 인자 누락: {argv}")
+        if any("\n" in a for a in argv):
+            failures.append(f"argv에 개행 포함(절단 위험): {argv}")
     except SystemExit as e:
         failures.append(f"invocation 빌드 실패(python which): {e}")
     # 미설치 CLI → 명시 SystemExit
     try:
-        _resolve_invocation("no-such-cli-xyz", "-p", "m", "p")
+        _resolve_invocation("no-such-cli-xyz", "-p", "m")
         failures.append("미설치 CLI를 통과시킴")
     except SystemExit as e:
         if "미설치" not in str(e):
             failures.append(f"미설치 진단 이상: {e}")
+    # 단위: 심 라우팅 — .ps1→powershell -File / .cmd·.bat→cmd /c / .exe→그대로 (R1 재실행 실패 원인)
+    if _wrap_shim(r"C:\x\codex.CMD", ["exec", "-m", "g"]) != ["cmd", "/c", r"C:\x\codex.CMD", "exec", "-m", "g"]:
+        failures.append(".cmd 심을 cmd /c로 라우팅 안 함")
+    if _wrap_shim(r"C:\x\gemini.ps1", ["-p"])[:5] != ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]:
+        failures.append(".ps1 심을 powershell -File로 라우팅 안 함")
+    if _wrap_shim(r"C:\x\claude.exe", ["-p"]) != [r"C:\x\claude.exe", "-p"]:
+        failures.append(".exe는 그대로여야")
+
+    # 단위: _parse_review — 유효 JSON=checked / 비JSON·flagged 키 부재=unchecked (R1 1b)
+    if _parse_review('{"flagged": ["88.8", "999"]}') != (["88.8", "999"], True):
+        failures.append("flagged 유효 JSON 파싱 오류")
+    if _parse_review('{"flagged": []}') != ([], True):
+        failures.append("flagged 빈 리스트는 checked=True여야(정상 검수)")
+    if _parse_review("죄송합니다 요약이 첨부되지 않았습니다") != ([], False):
+        failures.append("비JSON 비응답은 unchecked(checked=False)여야")
+    if _parse_review('{"note": "no flagged key"}') != ([], False):
+        failures.append("flagged 키 부재는 unchecked여야")
 
     # 단위: 채점 — 충실 요약(94.2·seven 실재)=FAIL 0 / 발명 요약(88.8·999)=FAIL
     good = "## Summary\nx\n## Why\ny\n## Evidence\n- 94.2% accuracy · seven datasets\nsource_pdf: 1.pdf — arXiv:1234.56789\n"
@@ -274,12 +313,6 @@ def _self_test():
         failures.append(f"충실 요약 채점 오류: {gs}")
     if bs["absent"] < 1 or "88.8" not in " ".join(bs["fails"]):
         failures.append(f"발명 요약 채점 오류: {bs}")
-
-    # 단위: reviewer flagged 파싱
-    if _parse_flagged('앞말 {"flagged": ["88.8% 발명", "999"]} 뒷말') != ["88.8% 발명", "999"]:
-        failures.append("flagged JSON 파싱 오류")
-    if _parse_flagged("json 아님") != []:
-        failures.append("flagged 비JSON은 [] 이어야")
 
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)
@@ -299,31 +332,49 @@ def _self_test():
         if list((ws / DRAFTS_REL).glob("*")) if (ws / DRAFTS_REL).exists() else []:
             failures.append("dry-run이 작업영역을 만듦")
 
-        # --yes: fake runner 주입 (CLI 호출 0) — 팀별 분리 작업영역·리포트·채점 집계 검증
-        calls = {"n": 0}
-        def fake_runner(argv, cwd, timeout=300):
+        # --yes: fake runner 주입 (CLI 호출 0) — 프롬프트 stdin 전달·분리 작업영역·집계 검증
+        calls = {"n": 0, "prompts": []}
+        def fake_runner(argv, cwd, prompt, timeout=300):
             calls["n"] += 1
-            # producer면 요약, reviewer면 flagged JSON 반환 (프롬프트로 판별)
-            joined = " ".join(argv)
-            if "오류 후보" in joined:
+            calls["prompts"].append(prompt)
+            # ★프롬프트는 stdin으로 온다 — 개행 포함 전문이 절단 없이 도착해야(R1 원인 회귀 방지)
+            if "오류 후보" in prompt:   # reviewer
                 return '{"flagged": ["발명"]}'
             return good   # producer 요약(충실)
         rep, out_dir = run(str(ws), ws / TEAMS_REL, ws / CORPUS_REL, yes=True, runner=fake_runner)
         if calls["n"] != 4:   # 2팀 × 1논문 × 2(producer+reviewer)
             failures.append(f"호출 수 오류: {calls['n']} (기대 4)")
+        # R1: producer 프롬프트가 개행 다중 줄 전문으로 도착(첫 줄만 절단되지 않음)
+        prod_prompts = [p for p in calls["prompts"] if "오류 후보" not in p]
+        if not prod_prompts or not all("\n" in p and "초록:" in p and "## Evidence" in p for p in prod_prompts):
+            failures.append(f"producer 프롬프트 개행 전문 미도달(절단 회귀): {prod_prompts[:1]}")
         if not rep or len(rep["results"]) != 2:
             failures.append(f"결과 집계 오류: {rep and len(rep['results'])}")
         if not (out_dir / "team-compare-report.md").exists():
             failures.append("리포트 md 미생성")
+        for r in rep["results"]:
+            if not r.get("reviewer_checked"):
+                failures.append(f"정상 reviewer가 unchecked로 오집계: {r['team_id']}")
         # 팀별 분리 작업영역
         for tid in ("A", "B"):
             if not (ws / DRAFTS_REL / tid / "1234.56789.md").exists():
                 failures.append(f"팀 {tid} 분리 작업영역 미생성")
 
+        # R1 1b: reviewer 비응답(JSON 미반환) → unchecked 구분(위장 무결 차단)
+        def mute_reviewer(argv, cwd, prompt, timeout=300):
+            if "오류 후보" in prompt:
+                return "죄송합니다. 요약이 첨부되지 않았습니다."   # 비응답(JSON 없음)
+            return good
+        rep_u, out_u = run(str(ws), ws / TEAMS_REL, ws / CORPUS_REL, yes=True, runner=mute_reviewer)
+        if any(r.get("reviewer_checked") for r in rep_u["results"]):
+            failures.append("reviewer 비응답을 checked로 오집계(위장 무결)")
+        if "unchecked" not in (out_u / "team-compare-report.md").read_text(encoding="utf-8"):
+            failures.append("리포트에 unchecked 표기 누락")
+
         # --seeded: 매설 문구가 요약에 유입·reviewer 검출 결정론 대조
         seeded_summary = "## Summary\nx\n## Why\ny\n## Evidence\n- 발명수치 없음\nsource_pdf: 1.pdf — arXiv:1234.56789\n"
-        def seeded_runner(argv, cwd, timeout=300):
-            if "오류 후보" in " ".join(argv):
+        def seeded_runner(argv, cwd, prompt, timeout=300):
+            if "오류 후보" in prompt:
                 return '{"flagged": ["INVENTED-PHRASE-X 의심"]}'
             return seeded_summary + "\nINVENTED-PHRASE-X\n"
         (ws / "seeds.json").write_text(json.dumps({"phrases": ["INVENTED-PHRASE-X"]}), encoding="utf-8")

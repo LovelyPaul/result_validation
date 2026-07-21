@@ -37,6 +37,24 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
 ### Changed
 - `plugin.json`·RUNBOOK·DEMO frontmatter version 0.6.0.
 
+### Fixed (P1 R1 — claude-1 REVISE major 1 + minor 2)
+- **(major) team_compare 프롬프트 전달 argv→stdin**: Windows npm `.CMD` 심이 개행 포함 argv를
+  **첫 개행에서 절단**해 producer가 프롬프트 첫 줄만 받고 비응답하던 원인 규명·수정
+  (1차 E2E에서 codex-producer가 "초록 달라"로 응답한 진짜 원인 — 모델 성향 차이 아님).
+  프롬프트를 stdin으로 전달(`subprocess.run(input=prompt)`) — codex exec·claude -p 모두 수용.
+  심 라우팅은 `_wrap_shim`으로 분리: `.ps1`→`powershell -File`(.ps1 전용)·`.cmd`/`.bat`→`cmd /c`
+  (powershell -File은 .ps1만 받아 `.CMD`를 넣으면 실패 — R1 재실행에서 실측 후 교정)·`.exe`는 그대로.
+- **(major 연동 1b) reviewer 비수신·비응답 unchecked 구분**: `_parse_review`가 `{"flagged":[...]}`
+  JSON을 실제 받았을 때만 checked=True. 비JSON·flagged 키 부재는 **unchecked(검수 불능)**로
+  구분해 리포트 표기 — 지적 0건('무결')으로 위장 집계하지 않는다(위장 무결 차단).
+- **(minor) TEAM_COMPARE.md 실측 관찰 정정**: '모델 응답 성향 차이' → Windows 심 절단 버그
+  (규명·수정됨)로 원인 교정.
+- **(minor) teams.sample _examples 라벨·리포트 표기 정정**: '미설치 CLI' → 실측 가용(gemini·
+  ollama·agy) 반영·stdin 전달 주의 명시. 리포트의 인용 실재율 None은 빈 셀 대신
+  '집계 불가(Evidence needle 0)'로 표기.
+- self-test 추가: 개행 프롬프트 stdin 전문 도달(절단 회귀 방지)·reviewer 비응답→unchecked·
+  `_parse_review` checked/unchecked 판별.
+
 ## [0.5.0] - 2026-07-21
 
 ### Added (비교 분석 P1 5건 — gbrain·knowledge-manager·wiki-demo 대조 격차 해소, 오너 승인)
