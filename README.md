@@ -22,6 +22,9 @@ English | [한국어](README.ko.md)
 /research-survey run <category>    # run one full survey cycle
 ```
 
+**Running a live tutorial session?** See [TUTORIAL_SESSION.md](TUTORIAL_SESSION.md) — ready-to-paste
+Kickoff + 8 phase blocks for a 15–20 min guided walkthrough (works in both plugin-install and clone modes).
+
 **Bring your own papers**: `corpus_fetch.py --ids <arxiv-ids>` or `--query "<terms>" --max N`
 pulls titles/abstracts verbatim from the arXiv export API into the universal corpus schema
 (`--append` merges, skipping duplicate ids) — then edit the taxonomy dial and re-run classify.

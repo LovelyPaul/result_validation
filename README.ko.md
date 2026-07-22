@@ -23,6 +23,9 @@
 /research-survey run <카테고리>    # 한 카테고리 1사이클 실행
 ```
 
+**튜토리얼 세션을 진행하시나요?** [TUTORIAL_SESSION.md](TUTORIAL_SESSION.md) — 붙여넣기만 하면 되는
+Kickoff + 8단계 phase 블록 모음(15~20분 진행자용, 플러그인 설치·clone 모드 모두 작동).
+
 **내 논문 가져오기**: `corpus_fetch.py --ids <arXiv id들>` 또는 `--query "<검색어>" --max N`이
 arXiv export API에서 제목·초록을 원문 그대로 범용 코퍼스 스키마로 반입한다(`--append`는 병합·
 중복 id 스킵) — 그다음 taxonomy 다이얼을 내 주제로 고치고 classify를 재실행하면 된다.
