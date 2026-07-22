@@ -10,6 +10,34 @@ All notable changes to this plugin are documented here (Keep a Changelog style).
 > 가이드)해 규칙으로 박제한다. 신규 가이드 작성 시 fenced 명령을 임시 워크스페이스에서 route/
 > executable로 resolve되는지 확인할 것.
 
+## [Unreleased]
+
+### Added (튜토리얼 세션 붙여넣기 자료 + 하네스 시너지 — workspace-meta-harness·workspace-standards 참고, 오너 지시 2026-07-22)
+- **`TUTORIAL_SESSION.md` 신설(루트)**: "claude를 켠 뒤 그대로 붙여넣는" 세션 진행자용 자료.
+  Kickoff 블록(변형 오프닝 재현 — 첫 입력으로 맨몸 답을 받아 대조 재료 확보 → RUNBOOK 정독 →
+  튜토리얼 개시) + RUNBOOK §1 코어 **8단계 phase 블록**(다이얼→추출→선별→요약·맨몸대조→검증→
+  인사이트→가설→정리·지속, 각 블록에 목적·붙여넣기 프롬프트·기대 출력/확인 포인트·막힐 때 질문)
+  + 자기 주제 전환 블록(§2.5 연동) + 트러블슈팅(python 미탐지·corpus 없음·**플러그인 모드 어댑터
+  미로딩** 등) + 진행자 노트(Scale Modes 매핑 demo=Lite/tutorial=Standard/init+run=Full·phase별
+  토론 질문). **plugin/clone 두 모드 무관 작동**(붙여넣기는 어댑터 로딩과 독립). RUNBOOK 톤 규약
+  준수(존댓말·용어 풀이·질문 종료·LaTeX 금지)·경로는 `${CLAUDE_PLUGIN_ROOT}`/상대경로만.
+  README 2종(영·한) 빠른 시작 근처에 링크 1줄 추가.
+- **루트 `AGENTS.md` 세션 시작 절 추가(가산)**: 작업 지시 없이 clone 리포를 열었을 때(cold open)
+  ①CHANGELOG·워크스페이스 상태 실측 ②빈 상태 정직 보고("아직 생성된 서베이 워크스페이스 없음")
+  ③다음 액션을 질문으로 종료 + `TUTORIAL_SESSION.md` 존재 안내. **변형 오프닝(첫 입력이 연구
+  질문이면 맨몸 즉답) 우선**을 명시해 충돌 방지(workspace-meta-harness AGENTS 패턴 이식·기존
+  변형 오프닝 문구 무손상).
+- **`research-survey-init` SKILL 스캐폴드 후 검증 단계 추가(가산)**: 생성 워크스페이스의 표준 정합을
+  결정론으로 확인 — workspace-forge가 함께 설치/클론돼 있으면 그 `forge_validate.py --workspace
+  <생성경로>`로 C1~C9 확인을 권고(스크립트 복사 없이 참조 연동만), 없으면 수동 체크리스트
+  (12섹션·10단위 폴더·`.gitkeep`·메타파일 4종·`@AGENTS.md` import·플레이스홀더) fallback.
+
+### Notes
+- 위생 확인(`__pycache__`/`*.pyc`): `.gitignore`에 이미 규칙이 있고 워킹트리 pycache는 추적되지
+  않음(`git ls-files` 결과 0건)을 실측 확인 — 추가 조치 불필요.
+- 이 항목은 문서·설정만의 가산 변경으로, `plugin.json`·RUNBOOK·DEMO frontmatter 버전은 이번
+  범위(D1~D5) 밖이라 범프하지 않음(정식 릴리스 버전 부여는 별도 판단).
+
 ## [0.8.0] - 2026-07-22
 
 ### Added (4주 커리큘럼 + 진행 스킬 — 처음 시작한 사람이 단계별로, 오너 승인)
