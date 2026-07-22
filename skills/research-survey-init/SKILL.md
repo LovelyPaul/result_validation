@@ -46,6 +46,29 @@ workspace-standards(10단위 넘버링·CLAUDE.md 12섹션·메타파일)를 준
 7. 완료 후 다음 액션을 안내(질문으로 종료): "코퍼스를 `60-data/corpus.json`(범용 스키마)로 두고
    `/research-survey run <카테고리>`로 첫 사이클을 돌릴까요?"
 
+## 스캐폴드 후 검증 (권장 — 표준 정합 결정론 확인)
+
+스캐폴드가 끝나면 생성 워크스페이스가 실제로 workspace-standards에 맞는지 **결정론으로 확인**한다
+(LLM "된 것 같다" 자평 금지 — 판정은 도구 출력·파일 실측으로만).
+
+1. **forge_validate 연동 (있으면 우선)**: 메타하네스 **workspace-forge**(질문으로 하네스를 만드는
+   플러그인)가 함께 설치/클론돼 있으면, 그 검증기로 C1~C9(12섹션·번호 정합·`@AGENTS.md` import·
+   AGENTS 세션 시작 절·10단위 폴더·빈폴더 `.gitkeep`·미기록 이탈·메타파일·플레이스홀더 잔존)를
+   확인한다. 검증기는 workspace-forge 쪽 `skills/workspace-forge/scripts/forge_validate.py`이며,
+   이 스킬로 복사해 넣지 않는다(중복 소스 금지 — 참조 연동만). 실행 형태:
+   ```
+   python3 <workspace-forge>/skills/workspace-forge/scripts/forge_validate.py --workspace <생성경로>
+   ```
+   (`<workspace-forge>`는 그 플러그인이 놓인 위치 — 절대경로 하드코딩 대신 설치/클론 위치로 치환.
+   Windows면 `python3`→`python`/`py -3`. exit 0=전건 통과·1=미달. 미달 항목은 그대로 안내한다.)
+2. **수동 fallback (forge_validate가 없으면)**: 아래 체크리스트를 직접 확인한다 — ①CLAUDE.md 12섹션
+   (①제목~⑫품질·이력)이 모두 있는가 ②최상위 작업 폴더가 전부 `NN-` 10단위 접두인가(넘버링/
+   비넘버링 혼용 0) ③빈 넘버 폴더마다 `.gitkeep`이 있는가 ④메타파일 4종(`CHANGELOG.md`·
+   `PROJECT_STATUS.md`·`README.md`·`_meta/deviations.md`)이 있는가 ⑤`CLAUDE.md` 최상단에
+   `@AGENTS.md` import가 있는가 ⑥플레이스홀더(`[채우세요]`·`{{X}}`·`TODO`) 잔존이 없는가.
+   미달이면 그 목록을 정직히 안내하고, 스캐폴드 단계로 되돌아가 없는 것만 가산 보완한다.
+3. 검증 결과(통과/미달 목록)를 사용자에게 보고한 뒤 다음 액션을 질문으로 안내한다.
+
 ## 규약
 - 넘버링/비넘버링 혼용 금지. 빈 폴더 `.gitkeep` 유지. 파일명 규약(시스템 UPPERCASE·지식베이스 `NN_`·
   템플릿 `TEMPLATE_`) 준수. 표준 이탈은 `_meta/deviations.md`에 기록.
