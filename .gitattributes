@@ -1,0 +1,11 @@
+# 모든 텍스트 파일은 저장소에서 LF로 정규화 — CRLF 개행 노이즈 재발 방지.
+# (에디터/도구가 CRLF로 다시 저장해도 커밋 시 LF로 통일된다.)
+* text=auto eol=lf
+
+# 바이너리는 정규화 대상에서 제외
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary

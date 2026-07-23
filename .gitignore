@@ -8,3 +8,5 @@ __pycache__/
 # OS
 Thumbs.db
 .DS_Store
+# 사용자 서베이 워크스페이스 (플러그인 소스와 분리 — 산출물·코퍼스 데이터)
+/ontology-survey/
