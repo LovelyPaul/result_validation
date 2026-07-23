@@ -1,0 +1,31 @@
+{
+  "name": "code-review",
+  "_desc": "코드 리뷰 노트 검수 다이얼 — 리뷰가 주장하는 파일:라인·테스트 결과·수치가 실제 diff/테스트 출력(원문)에 실재하는지 검증한다. verify_core는 손대지 않고 이 다이얼만으로 도메인 전환.",
+
+  "required_sections": ["## 변경 요지", "## 변경 근거", "## 리스크"],
+  "_required_sections_note": "리뷰 노트 필수 절. 근거(무엇을 봤나)와 리스크(무엇이 걱정인가)를 강제.",
+
+  "cite_pattern": "[\\w./-]+\\.(?:py|js|ts|tsx|jsx|go|rs|java|rb|c|cpp|h|sql):\\d+|(?:test_\\w+|\\w+Test|\\w+_test)",
+  "_cite_pattern_note": "근거로 인정하는 형태: 파일:라인 · 테스트명(test_x·xTest·x_test)만. PR번호·커밋해시는 '무엇을 봤나'가 아니라 '어느 변경인가'를 가리키는 좌표라 근거로 세지 않는다(논문 다이얼이 arXiv id를 인용으로 안 세는 것과 동일 이치). PR·해시는 coord/source_id에만 남긴다.",
+  "min_cites": 2,
+
+  "placeholder_pattern": "\\bTODO\\b|\\bFIXME\\b|<채우세요>|\\(작성 필요\\)|\\{\\{[A-Z_]+\\}\\}|\\bXXX\\b",
+  "_placeholder_note": "미작성 슬롯 신호.",
+
+  "source_marker": "source_diff",
+  "_source_marker_note": "원문 소스(diff/테스트 출력) 표기 키. '<키>: <값>'의 값(파일명)으로 원문 txt 매핑.",
+
+  "evidence_section": "## 변경 근거(.*?)(?=\\n## |\\Z)",
+  "_evidence_section_note": "근거 실재 검사를 적용할 절. 이 절의 수치·인용만 원문(diff/테스트 출력) 대조.",
+
+  "coord_pattern": "[\\w./-]+\\.(?:py|js|ts|tsx|jsx|go|rs|java|rb|c|cpp|h|sql):\\d+|PR#\\d+|\\b[0-9a-f]{7,40}\\b|\\d{4}-\\d{2}-\\d{2}",
+  "_coord_note": "'주장'이 아니라 '좌표'인 것(파일:라인·PR번호·커밋해시·날짜). 수치 추출 전 마스킹해 오탐 제거 — 라인번호가 발명 수치로 오탐되지 않게.",
+
+  "source_id_pattern": "PR#(\\d+)",
+  "source_id_tagged": "source_diff:\\s*PR#(\\d+)",
+  "source_id_full": "PR#\\d+$",
+  "_source_id_note": "리뷰 노트→원문 매핑 id(PR번호). source_diff: PR#123 표기를 우선 매칭. 원문 txt는 <source_diff 값 stem>.txt 또는 <PR번호>.txt.",
+
+  "coverage_threshold": 0.0,
+  "_coverage_note": "코드 리뷰는 원문 diff 전체를 요약이 커버할 필요가 없다(변경 근거는 발췌가 정상). 커버율 경고 비활성(0.0)."
+}

@@ -91,11 +91,31 @@ python3 grade_core.py --self-test
 | ev-unresolved-source | 코퍼스 미등재 id → unchecked | grounding(fail-closed) |
 | ev-clean-control | 정상(모든 수치 실재) → 통과 | — (과차단 감시) |
 
+## 두 번째 에이전트 = 코드 리뷰 (아키텍처 검증)
+
+`dials/code-review.json` + `ev/code-review/`는 **`verify_core.py`를 한 줄도 안 고치고** 만든
+두 번째 도메인 에이전트다. 논문↔코드 리뷰 매핑:
+
+| | 논문 | 코드 리뷰 |
+|---|---|---|
+| 근거 절 | `## Evidence` | `## 변경 근거` |
+| 인용 형태 | `p.6`·`Table 1` | `src/auth.py:42`·`test_x` |
+| 원문(소스) | arXiv 초록·PDF txt | diff·테스트 출력 |
+| 매핑 id | arXiv id | `PR#123` |
+| 발명 차단 | 원문에 없는 수치·인용 | diff에 없는 커버리지·테스트 결과 문구 |
+
+**다이얼 설계 교훈(실측에서 나옴)**: 처음엔 `cite_pattern`에 `PR#\d+`를 넣었더니, 파일:라인
+근거를 하나도 안 댄 리뷰가 하단 `source_diff: PR#123` 표기만으로 인용 2개를 충족해 새어나갔다.
+**PR번호·커밋해시는 '무엇을 봤나'(근거)가 아니라 '어느 변경인가'(좌표)** 라 인용에서 빼야 한다
+(논문 다이얼이 arXiv id를 인용으로 안 세는 것과 동일). 이 결함은 **코어가 아니라 다이얼에서**
+고쳐졌다 — 설계가 올바르다는 신호다.
+
 ## 새 검수 에이전트 찍어내기 (다이얼 추가만)
 
 1. `dials/<도메인>.json`을 만든다 — 위 스키마대로 그 도메인의 근거 규칙을 채운다.
-   - 예) **코드 리뷰**: `evidence_section` = `## 변경 근거`, `cite_pattern` = 파일:라인(`\\S+:\\d+`)·
-     테스트명, `source_id_pattern` = PR/커밋 해시, 원문 = diff·테스트 출력.
+   - **코드 리뷰** (구현됨 — `dials/code-review.json` + `ev/code-review/`): `evidence_section` =
+     `## 변경 근거`, `cite_pattern` = 파일:라인·테스트명(PR#·해시는 '좌표'라 근거로 안 셈),
+     `source_id_pattern` = `PR#(\\d+)`, 원문 = diff·테스트 출력. 거부율 100%·과차단 0 실측.
    - 예) **문서 팩트체크**: `evidence_section` = `## 근거`, `cite_pattern` = 조항/페이지,
      `source_id_pattern` = 문서 id, 원문 = 원본 조항 txt.
 2. `--dial dials/<도메인>.json`으로 실행한다. **코어는 손대지 않는다.**
@@ -113,6 +133,7 @@ python3 grade_core.py --self-test
 - [x] **G1** 골격 복제 — 2층 검증 코어 이관
 - [x] **G2** 스키마 외부화 — 도메인 상수를 다이얼로
 - [x] **G3** 매설 스위트 — `grade_core.py` + `ev/research-paper/`(거부율 100%·과차단 0 실측)
-- [ ] **두 번째 다이얼** — 코드 리뷰/문서 팩트체크 다이얼로 "다이얼 교체만으로 새 에이전트" 검증
+- [x] **두 번째 다이얼** — `dials/code-review.json` + `ev/code-review/`. **코어 무수정**으로
+      코드 리뷰 검수 에이전트 동작(거부율 100%). 아키텍처 검증 완료 — 도메인 결함은 다이얼에서 해결.
 - [ ] **G1+** 의미 채널 — 임베딩/NLI를 WARN급 보조로 (판정 권한은 결정론 유지)
 - [ ] **G6** CI 배선 — 임계 exit로 PR 훅·거부율 추세 추적

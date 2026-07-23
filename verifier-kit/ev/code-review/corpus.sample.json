@@ -1,0 +1,7 @@
+[
+  {
+    "id": "123",
+    "title": "PR#123 add token expiry check to auth",
+    "abstract": "diff --git a/src/auth.py b/src/auth.py\n@@ -38,6 +38,12 @@ def verify_token(tok):\n     payload = decode(tok)\n+    if payload.get('exp', 0) < now():\n+        raise TokenExpired()\n     return payload\n\ntest output: 12 passed, 0 failed in 3.4s\ncoverage: src/auth.py 91.2% (was 88.0%)\nfiles changed: src/auth.py, tests/test_auth.py"
+  }
+]
