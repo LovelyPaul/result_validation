@@ -67,6 +67,24 @@ if [ "$graded" -eq 0 ]; then
 fi
 hr
 
+# ── ③ 의미 채널 (G1+) — 정보 전용·비차단 (fail 에 절대 반영 안 함) ──
+# 판정 권한 없음: WARN을 로그에 남길 뿐 게이트 통과/실패를 바꾸지 않는다.
+echo "[정보] 의미 채널 WARN (판정 아님 — 게이트에 불반영)"
+for dial in "$KIT"/dials/*.json; do
+  [ -e "$dial" ] || continue
+  name="$(basename "$dial" .json)"
+  corpus="$KIT/ev/$name/corpus.sample.json"
+  [ -f "$corpus" ] || continue
+  warns="$($PY "$KIT/semantic_core.py" --dir "$KIT/ev/$name" --dial "$dial" \
+             --corpus "$corpus" 2>/dev/null | grep '\[WARN·의미\]' || true)"
+  if [ -n "$warns" ]; then
+    echo "  $name:"; printf '%s\n' "$warns" | sed 's/^/    /'
+  else
+    echo "  $name: 의미 WARN 없음"
+  fi
+done
+hr
+
 if [ "$fail" -ne 0 ]; then
   echo "게이트 실패 — 위 항목을 수정하라."
   exit 1
