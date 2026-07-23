@@ -12,7 +12,7 @@
 - [ ] 아티팩트 2 (구축) 탭 열기 — https://claude.ai/code/artifact/02447789-ed0b-44ac-93c8-d6f7e5a87bdc
 - [ ] GitHub Actions 탭 열기 — github.com/LovelyPaul/result_validation/actions (초록 배지 확인)
 - [ ] 터미널 열고 `cd .../research-survey/verifier-kit` 해두기
-- [ ] 데모 스크립트 위치 확인: `demo-break-the-gate.sh`
+- [ ] 데모 스크립트 위치 확인: `verifier-kit/demo/break-the-gate.sh`
 - [ ] 폰트 크게 (터미널 18pt+), 게이트 실행이 0.25초라 리허설 불필요
 
 ---
