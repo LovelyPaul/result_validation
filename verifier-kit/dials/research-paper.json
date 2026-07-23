@@ -1,0 +1,31 @@
+{
+  "name": "research-paper",
+  "_desc": "논문 요약 검수 다이얼 — research-survey verify_summaries.py의 하드코딩 상수를 그대로 이관. 원문(arXiv 초록·PDF 추출 txt) 대비 수치·인용 실재를 검증한다.",
+
+  "required_sections": ["## Summary", "## Why", "## Evidence"],
+  "_required_sections_note": "산출물에 반드시 존재해야 할 섹션 헤딩. 없으면 규격 FAIL.",
+
+  "cite_pattern": "p\\.\\s*\\d+|Table\\s*\\d|Figure\\s*\\d|Fig\\.\\s*\\d|§\\s*\\d",
+  "_cite_pattern_note": "근거 인용으로 인정하는 형태(페이지·표·그림·절). min_cites개 이상 필요.",
+  "min_cites": 3,
+
+  "placeholder_pattern": "\\(워커 작성|\\(작성 필요|\\bTODO\\b|<채우세요>|\\{\\{[A-Z_]+\\}\\}",
+  "_placeholder_note": "미작성 슬롯 신호 — 하나라도 남아 있으면 FAIL.",
+
+  "source_marker": "source_pdf",
+  "_source_marker_note": "원문 소스 표기 키. 이 문자열이 산출물에 있어야 하고, '<키>: <값>' 형태에서 값(파일명)으로 원문 txt를 찾는다.",
+
+  "evidence_section": "## Evidence(.*?)(?=\\n## |\\Z)",
+  "_evidence_section_note": "근거 실재 검사를 적용할 절. 이 절 안의 수치·인용만 원문 대조 대상.",
+
+  "coord_pattern": "arXiv[:\\s]*\\d{4}\\.\\d{4,5}(?:v\\d+)?|\\b\\d{4}\\.\\d{4,5}(?:v\\d+)?\\b|\\d{4}-\\d{2}-\\d{2}|p\\.\\s*\\d+|(?:Table|Figure|Fig\\.|Section|§)\\s*[\\d.]*\\d",
+  "_coord_note": "'주장'이 아니라 '좌표·메타'인 수치(arXiv id·날짜·페이지·표번호). 수치 추출 전 마스킹해 오탐 제거.",
+
+  "source_id_pattern": "\\b(\\d{4}\\.\\d{4,5})(?:v\\d+)?\\b",
+  "source_id_tagged": "arXiv[:\\s]*(\\d{4}\\.\\d{4,5})",
+  "source_id_full": "\\d{4}\\.\\d{4,5}$",
+  "_source_id_note": "산출물→원문 매핑 id(arXiv). tagged(arXiv:접두)를 우선 매칭, 없으면 any. full은 수치 needle 오추출 안전벨트.",
+
+  "coverage_threshold": 0.6,
+  "_coverage_note": "원문 초록 키포인트 커버율 경고 임계(WARN — exit 불반영)."
+}

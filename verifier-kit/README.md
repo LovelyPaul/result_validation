@@ -1,0 +1,87 @@
+# verifier-kit — 도메인 중립 검수 코어 + 다이얼
+
+`research-survey` 플러그인의 검증된 검수 로직(`verify_summaries.py`)에서 **"무엇을 검증할지"를
+다이얼(JSON)로 외부화**한 킷이다. 코어는 도메인을 모르고, 다이얼이 안다. 새 검수 에이전트는
+**코드가 아니라 다이얼 한 장**을 추가해 찍어낸다.
+
+> 설계 근거: `taxonomy.json`이 "무엇을 모을지"를 코드 변경 0으로 바꾸듯, 이 킷은 "무엇을
+> 검증할지"를 다이얼로 뺀다. 상세 방법론은 이 세션에서 만든 하네스 해부 아티팩트 참조.
+
+## 무엇이 코어이고 무엇이 다이얼인가
+
+| | 코어 (`verify_core.py` — 도메인 무관·수정 대상 아님) | 다이얼 (`dials/*.json` — 도메인이 정함) |
+|---|---|---|
+| 검사 로직 | 수치·인용이 원문에 substring 실재하는가(grep) | 어느 절에서 근거를 찾나 (`evidence_section`) |
+| 오탐 회피 | 마스킹+스코프·숫자 경계·영어 수사 인정 | 무엇이 '좌표/메타'인가 (`coord_pattern`) |
+| 규격 검사 | 섹션·인용·플레이스홀더·소스 표기 존재 검사 | 필수 섹션·인용 형태·소스 키가 무엇인가 |
+| 원문 매핑 | fail-closed(해결 불가 시 FAIL) | 산출물→원문 id 형식 (`source_id_pattern`) |
+
+**핵심: 발명 수치·오인용을 잡는 grep 로직 자체는 완전히 범용이다.** 도메인이 정하는 건
+근거를 어디서·어떤 형태로 찾고, 원문을 어떻게 매핑하는가뿐이다.
+
+## 검증 두 층 (원본과 동일 구조)
+
+1. **규격(structural)** — 항상 실행. 플레이스홀더 0 · 필수 섹션 존재 · 근거 인용 ≥ `min_cites` · 소스 표기 존재.
+2. **근거(grounding)** — `--corpus` 지정 시. 근거 절의 모든 수치(%·소수·정수)와 12자+ 인용
+   문구가 원문에 실재하는지 대조. 부재 = **FAIL**. 원문 미해결 = **FAIL(fail-closed)** —
+   조용한 생략은 매설 오류의 우회 루프홀이므로 막는다.
+
+## 사용법
+
+```bash
+# 규격만 (원문 대조 없이)
+python3 verify_core.py --dir <산출물 폴더> --dial dials/research-paper.json
+
+# 근거 실재까지 (권장) — corpus.json 대비 수치·인용 grep
+python3 verify_core.py --dir <폴더> --dial dials/research-paper.json \
+  --corpus <corpus.json> [--source-dir <PDF추출 txt 폴더>]
+
+# 자체 검사 (외부 의존 0)
+python3 verify_core.py --self-test
+```
+
+반환: `0`=전건 PASS · `1`=FAIL 존재 · `2`=입력/다이얼 오류. → CI 게이트로 그대로 사용 가능.
+
+## 다이얼 스키마
+
+| 키 | 필수 | 의미 |
+|---|---|---|
+| `name` | ✓ | 다이얼 이름(리포트에 표기) |
+| `required_sections` | ✓ | 반드시 존재해야 할 섹션 헤딩 배열 |
+| `cite_pattern` | ✓ | 근거 인용으로 인정하는 정규식 (`min_cites`개 이상) |
+| `source_marker` | ✓ | 원문 소스 표기 키(`<키>: <값>`의 값으로 원문 txt 매핑) |
+| `evidence_section` | ✓ | 근거 실재 검사를 적용할 절 캡처 정규식 |
+| `coord_pattern` | ✓ | 수치 추출 전 마스킹할 '좌표/메타'(주장 아님) 정규식 |
+| `source_id_pattern` | ✓ | 산출물→원문 매핑 id 정규식(캡처그룹 1개) |
+| `source_id_tagged` | | 태그형 id 우선 매칭(예: `arXiv:` 접두) |
+| `source_id_full` | | 수치 needle 오추출 안전벨트(id의 full-match 형태) |
+| `placeholder_pattern` | | 미작성 슬롯 신호 정규식 |
+| `min_cites` | | 최소 근거 인용 수(기본 3) |
+| `coverage_threshold` | | 키포인트 커버율 WARN 임계(기본 0.6) |
+
+> JSON에서 정규식 백슬래시는 `\\`로 이스케이프한다. `_`로 시작하는 키(`_desc` 등)는 주석이며
+> 코어가 무시한다.
+
+## 새 검수 에이전트 찍어내기 (다이얼 추가만)
+
+1. `dials/<도메인>.json`을 만든다 — 위 스키마대로 그 도메인의 근거 규칙을 채운다.
+   - 예) **코드 리뷰**: `evidence_section` = `## 변경 근거`, `cite_pattern` = 파일:라인(`\\S+:\\d+`)·
+     테스트명, `source_id_pattern` = PR/커밋 해시, 원문 = diff·테스트 출력.
+   - 예) **문서 팩트체크**: `evidence_section` = `## 근거`, `cite_pattern` = 조항/페이지,
+     `source_id_pattern` = 문서 id, 원문 = 원본 조항 txt.
+2. `--dial dials/<도메인>.json`으로 실행한다. **코어는 손대지 않는다.**
+3. 그 도메인의 **매설(seeded-error) 스위트**를 만들어(다음 단계 G3) 검수기의 거부율을 채점한다.
+
+## 이관 출처·검증
+
+- 코어 로직은 `../skills/research-survey-run/scripts/verify_summaries.py`에서 이관(재작성 아님).
+- `verify_core.py --self-test` → **SELF-TEST PASS** (원본 fixture 이식·경계 조건 회귀 포함).
+- 외부 다이얼 파일(`dials/research-paper.json`)로 발명 수치(`94.2%`) 탐지·정상 노트 통과 실측 확인.
+
+## 로드맵 (6대 보완점 대응)
+
+- [x] **G1** 골격 복제 — 2층 검증 코어 이관
+- [x] **G2** 스키마 외부화 — 도메인 상수를 다이얼로
+- [ ] **G3** 매설 스위트 — 도메인별 오류 노트 + 대조군으로 거부율 채점 (`grade_core.py`)
+- [ ] **G1+** 의미 채널 — 임베딩/NLI를 WARN급 보조로 (판정 권한은 결정론 유지)
+- [ ] **G6** CI 배선 — 임계 exit로 PR 훅·거부율 추세 추적
