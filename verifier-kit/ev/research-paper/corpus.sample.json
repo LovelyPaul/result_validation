@@ -1,0 +1,12 @@
+[
+  {
+    "id": "2303.08896",
+    "title": "SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection",
+    "abstract": "We propose SelfCheckGPT, a sampling-based approach that can detect hallucinated responses from black-box language models without any external database. The key idea is that if a model has knowledge of a concept, sampled responses are likely to be consistent; hallucinated facts diverge across samples. We evaluate on the WikiBio dataset and show that SelfCheckGPT detects non-factual sentences and ranks passages by factuality."
+  },
+  {
+    "id": "2512.17776",
+    "title": "DEER: A Benchmark for Deep Research Report Evaluation",
+    "abstract": "DEER organizes an expert-developed taxonomy for evaluating deep research reports, spanning 7 dimensions and 25 subdimensions with 101 rubric items. It introduces a claim verification architecture that checks both cited and uncited claims against retrieved evidence."
+  }
+]

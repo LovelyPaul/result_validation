@@ -35,8 +35,11 @@ from pathlib import Path
 
 # ── 범용 상수 (도메인 무관 — 코어에 유지) ──────────────────────────
 PCT = re.compile(r"\d+(?:\.\d+)?(?=\s*%)")          # 94.2% → '94.2'
-DEC = re.compile(r"\b\d+\.\d+\b")                    # 0.514 등 소수
-INT = re.compile(r"(?<![\d.])\d+(?!\.?\d)")          # 정수 (소수·id의 일부는 제외)
+# 왼쪽 경계 (?<![\w.]) — 지표명에 붙은 숫자(F1·R2·P95의 1·2·95)를 needle에서 제외한다.
+# 오른쪽 뒤에 CJK 조사가 붙어도('92.4를') 추출되도록 \b 앵커는 쓰지 않는다(\b는 한글이
+# word char라 실패). arXiv id 등은 source_id_full 안전벨트가 걸러낸다.
+DEC = re.compile(r"(?<![\w.])\d+\.\d+(?![\d.])")     # 0.514·92.4를 등 소수
+INT = re.compile(r"(?<![\w.])\d+(?!\.?\d)")          # 정수 (지표명·소수·id의 일부 제외)
 LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.M)     # 행머리 목차·리스트 번호 (오탐원)
 YEAR_MIN, YEAR_MAX = 1900, 2099                      # 연도형 4자리 — 메타데이터 유래 오탐원
 WORD_NUMS = {"0": "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five",
@@ -362,6 +365,12 @@ def _self_test():
     g6 = check_evidence_grounding("## Evidence\n- 999 samples 사용 (p.5)\n", "The corpus contains 1999 samples.", dial)
     if len(g6) != 1:
         failures.append(f"숫자 경계 매칭 오류: {g6}")
+    # CJK 인접 소수 — '92.4를'처럼 한글이 붙어도 추출돼야(\\b 앵커 회귀 방지)
+    if extract_claim_numbers("- F1 92.4를 달성 (Table 1)", dial) != ["92.4"]:
+        failures.append(f"CJK 인접 소수 추출 실패: {extract_claim_numbers('- F1 92.4를 (Table 1)', dial)}")
+    g7 = check_evidence_grounding("## Evidence\n- F1 92.4를 달성 (Table 1)\n", _ABSTRACT, dial)
+    if len(g7) != 1 or "92.4" not in g7[0]:
+        failures.append(f"CJK 인접 발명 소수 미탐지: {g7}")
     # 커버율
     cov_hi, _ = keypoint_coverage(_ABSTRACT, _GOOD_MD)
     cov_lo, unc = keypoint_coverage(_ABSTRACT, _BAD_MD)

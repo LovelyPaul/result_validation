@@ -62,6 +62,35 @@ python3 verify_core.py --self-test
 > JSON에서 정규식 백슬래시는 `\\`로 이스케이프한다. `_`로 시작하는 키(`_desc` 등)는 주석이며
 > 코어가 무시한다.
 
+## 검수기 채점 (G3) — "이 검수기를 믿을 수 있나?"
+
+`grade_core.py`는 검수기 자체를 채점한다. 일부러 오염시킨 노트(**매설**)를 게이트에 통과시켜
+**거부율**을 재고, 정상 노트(**대조군**)로 **과차단**까지 감시한다.
+
+```bash
+python3 grade_core.py --ev-dir ev/research-paper --dial dials/research-paper.json \
+  --corpus ev/research-paper/corpus.sample.json --min-reject 0.8 [--report out.json]
+python3 grade_core.py --self-test
+```
+
+- **이중 구현 금지**: 판정은 `verify_core`의 검사 함수를 그대로 호출한다 — 채점기와 검수기가
+  다른 코드면 "채점은 통과, 실물은 실패"하는 괴리가 생긴다. 같은 코드 경로로 차단.
+- **대조군 분리**: 거부율 분모는 매설만. 대조군을 섞으면 수치가 조용히 희석된다.
+- 매설 노트는 검수 대상 md 상단에 메타 주석만 얹는다:
+  `<!-- ev_type: invented-number -->` · `<!-- ev_expect: reject|pass|unchecked -->`
+  (기본 reject. `pass`=대조군, `unchecked`=fail-closed 시연).
+
+동봉 스위트(`ev/research-paper/`) 5매설 + 1대조군 실측: **거부율 100% · 과차단 0 · fail-closed 1**.
+
+| 매설 노트 | 유형 | 잡는 층 |
+|---|---|---|
+| ev-invented-number | 원문에 없는 수치 92.4 | grounding |
+| ev-quote-miscite | 원문에 없는 따옴표 인용 | grounding |
+| ev-missing-section | 필수 섹션 누락 | structural |
+| ev-no-source | 소스 표기·인용 부족 | structural |
+| ev-unresolved-source | 코퍼스 미등재 id → unchecked | grounding(fail-closed) |
+| ev-clean-control | 정상(모든 수치 실재) → 통과 | — (과차단 감시) |
+
 ## 새 검수 에이전트 찍어내기 (다이얼 추가만)
 
 1. `dials/<도메인>.json`을 만든다 — 위 스키마대로 그 도메인의 근거 규칙을 채운다.
@@ -70,7 +99,8 @@ python3 verify_core.py --self-test
    - 예) **문서 팩트체크**: `evidence_section` = `## 근거`, `cite_pattern` = 조항/페이지,
      `source_id_pattern` = 문서 id, 원문 = 원본 조항 txt.
 2. `--dial dials/<도메인>.json`으로 실행한다. **코어는 손대지 않는다.**
-3. 그 도메인의 **매설(seeded-error) 스위트**를 만들어(다음 단계 G3) 검수기의 거부율을 채점한다.
+3. 그 도메인의 **매설 스위트**(`ev/<도메인>/`)를 만들어 `grade_core.py`로 거부율을 채점한다 —
+   `ev/research-paper/`를 템플릿으로 삼는다.
 
 ## 이관 출처·검증
 
@@ -82,6 +112,7 @@ python3 verify_core.py --self-test
 
 - [x] **G1** 골격 복제 — 2층 검증 코어 이관
 - [x] **G2** 스키마 외부화 — 도메인 상수를 다이얼로
-- [ ] **G3** 매설 스위트 — 도메인별 오류 노트 + 대조군으로 거부율 채점 (`grade_core.py`)
+- [x] **G3** 매설 스위트 — `grade_core.py` + `ev/research-paper/`(거부율 100%·과차단 0 실측)
+- [ ] **두 번째 다이얼** — 코드 리뷰/문서 팩트체크 다이얼로 "다이얼 교체만으로 새 에이전트" 검증
 - [ ] **G1+** 의미 채널 — 임베딩/NLI를 WARN급 보조로 (판정 권한은 결정론 유지)
 - [ ] **G6** CI 배선 — 임계 exit로 PR 훅·거부율 추세 추적
