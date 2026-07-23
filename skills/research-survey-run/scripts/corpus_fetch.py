@@ -147,11 +147,35 @@ def _request(url, retry_wait=RETRY_WAIT, opener=_default_opener):
                          f"잠시 뒤 다시 시도하라. (URL: {url})")
 
 
+FIELD_PREFIX = re.compile(r'\b(all|ti|abs|au|cat|co|jr|rn|id):', re.I)
+
+
+def build_search_query(query):
+    """검색어 → arXiv search_query 문자열.
+
+    arXiv API의 `all:` 접두는 **첫 토큰에만 결합**한다 — `all:ontology construction LLM`은
+    "ontology"만 필드 한정되고 나머지는 느슨하게 흩어져, `sortBy=submittedDate`와 겹치면
+    사실상 "그냥 최신 논문"이 반환된다(주제 무관 물리·수학 논문 유입). 다중어 검색어는
+    따옴표로 구절 결합해 이 오작동을 막는다.
+
+    이미 필드 접두(all:/ti:/abs:/cat: 등)나 불리언(AND/OR/ANDNOT)을 쓴 질의는 사용자가
+    직접 구성한 것으로 보고 그대로 통과시킨다.
+    """
+    q = query.strip()
+    if FIELD_PREFIX.search(q) or re.search(r'\b(AND|OR|ANDNOT)\b', q):
+        return q
+    if '"' in q:
+        return f"all:{q}"
+    if len(q.split()) > 1:
+        return f'all:"{q}"'
+    return f"all:{q}"
+
+
 def fetch(ids=None, query=None, max_n=10, since=None):
     if ids:
         params = {"id_list": ",".join(ids), "max_results": str(len(ids))}
     else:
-        params = {"search_query": f"all:{query}", "max_results": str(max_n)}
+        params = {"search_query": build_search_query(query), "max_results": str(max_n)}
         if since:
             # 델타 모드: 최신순 정렬로 --max 창이 since 이후 신규분을 향하게 한다
             params["sortBy"] = "submittedDate"
@@ -246,6 +270,14 @@ def _self_test():
     stamped = stamp_retrieved_at(parse_atom(_FIXTURE), "2026-07-21")
     if not all(r["retrieved_at"] == "2026-07-21" for r in stamped):
         failures.append(f"retrieved_at 스탬프 오류: {[r.get('retrieved_at') for r in stamped]}")
+    # 다중어 검색어 구절 결합 — all: 접두가 첫 토큰에만 붙는 arXiv 동작 대응
+    if build_search_query("ontology construction LLM") != 'all:"ontology construction LLM"':
+        failures.append(f"다중어 구절 결합 오류: {build_search_query('ontology construction LLM')}")
+    if build_search_query("OntoClean") != "all:OntoClean":
+        failures.append(f"단일어 질의 변형 오류: {build_search_query('OntoClean')}")
+    for passthru in ('abs:"ontology" AND cat:cs.AI', 'all:"a" OR all:"b"', 'ti:ontology'):
+        if build_search_query(passthru) != passthru:
+            failures.append(f"필드/불리언 질의 통과 오류: {passthru} → {build_search_query(passthru)}")
     # P1-5: --since 델타 필터 (네트워크 0 — fixture 날짜만)
     kept, old, undated = filter_since(rows, parse_since("2024-01-01"))
     if [r["id"] for r in kept] != ["2512.17776"] or [r["id"] for r in old] != ["2303.08896"]:
