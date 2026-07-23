@@ -110,6 +110,30 @@ python3 grade_core.py --self-test
 (논문 다이얼이 arXiv id를 인용으로 안 세는 것과 동일). 이 결함은 **코어가 아니라 다이얼에서**
 고쳐졌다 — 설계가 올바르다는 신호다.
 
+## CI 게이트 (G6) — 검수기가 약해지면 빌드를 막는다
+
+`ci/run-gate.sh`는 로컬·CI 동일 진입점이다(이중 구현 금지 — CI가 로컬과 다른 명령을 쓰면
+"로컬은 통과, CI는 실패" 괴리가 생긴다). 하는 일:
+
+1. `verify_core`·`grade_core` self-test (엔진 무결성)
+2. **다이얼 자동 발견** — `dials/*.json` 각각에 대해 `ev/<다이얼명>/` 매설 스위트를 채점.
+   거부율 < `MIN_REJECT`(기본 0.8)이거나 대조군 과차단이면 exit 1.
+
+```bash
+bash verifier-kit/ci/run-gate.sh          # 전체 게이트
+MIN_REJECT=1.0 bash verifier-kit/ci/run-gate.sh
+```
+
+**새 에이전트를 추가해도 CI를 안 고친다** — `dials/X.json` + `ev/X/`(코퍼스 포함)만 두면
+러너가 자동으로 채점 대상에 넣는다. ev 스위트 없는 다이얼은 경고(스킵), 코퍼스 없으면
+fail-closed(exit 1).
+
+GitHub Actions(`.github/workflows/verifier-gate.yml`)가 `verifier-kit/**` 변경 push·PR마다
+이 러너를 돌린다. 표준 라이브러리만 쓰므로 의존성 설치 단계가 없다.
+
+> 게이트가 진짜로 막는지 실측: 매설 노트를 정상으로 오염시켜 거부율 100%→75%로 떨구면
+> `MIN_REJECT=0.8` 게이트가 exit 1로 잡는다(검수기가 약해지면 CI가 자동 차단).
+
 ## 새 검수 에이전트 찍어내기 (다이얼 추가만)
 
 1. `dials/<도메인>.json`을 만든다 — 위 스키마대로 그 도메인의 근거 규칙을 채운다.
@@ -119,8 +143,9 @@ python3 grade_core.py --self-test
    - 예) **문서 팩트체크**: `evidence_section` = `## 근거`, `cite_pattern` = 조항/페이지,
      `source_id_pattern` = 문서 id, 원문 = 원본 조항 txt.
 2. `--dial dials/<도메인>.json`으로 실행한다. **코어는 손대지 않는다.**
-3. 그 도메인의 **매설 스위트**(`ev/<도메인>/`)를 만들어 `grade_core.py`로 거부율을 채점한다 —
-   `ev/research-paper/`를 템플릿으로 삼는다.
+3. 그 도메인의 **매설 스위트**(`ev/<도메인>/` + `corpus.sample.json`)를 만든다 —
+   `ev/research-paper/`·`ev/code-review/`를 템플릿으로. `ci/run-gate.sh`가 자동 발견해
+   채점하므로 CI 설정은 건드릴 필요 없다.
 
 ## 이관 출처·검증
 
@@ -135,5 +160,7 @@ python3 grade_core.py --self-test
 - [x] **G3** 매설 스위트 — `grade_core.py` + `ev/research-paper/`(거부율 100%·과차단 0 실측)
 - [x] **두 번째 다이얼** — `dials/code-review.json` + `ev/code-review/`. **코어 무수정**으로
       코드 리뷰 검수 에이전트 동작(거부율 100%). 아키텍처 검증 완료 — 도메인 결함은 다이얼에서 해결.
+- [x] **G6** CI 배선 — `ci/run-gate.sh`(다이얼 자동 발견) + GitHub Actions. 거부율 하락 시
+      PR 차단(실측: 100%→75% 오염 시 exit 1). 새 에이전트 추가해도 CI 무수정.
 - [ ] **G1+** 의미 채널 — 임베딩/NLI를 WARN급 보조로 (판정 권한은 결정론 유지)
-- [ ] **G6** CI 배선 — 임계 exit로 PR 훅·거부율 추세 추적
+- [ ] **거부율 추세 추적** — CI 리포트를 아티팩트로 적재해 거부율 시계열 감시

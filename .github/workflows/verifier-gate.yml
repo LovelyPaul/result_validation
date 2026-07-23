@@ -1,0 +1,38 @@
+name: verifier-kit gate
+
+# 검수 하네스가 지속적으로 검증되게 한다 — 검수기가 약해지면(매설 거부율 하락) PR을 막는다.
+# verifier-kit/ 또는 이 워크플로가 바뀐 push·PR에서만 돈다.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "verifier-kit/**"
+      - ".github/workflows/verifier-gate.yml"
+  pull_request:
+    paths:
+      - "verifier-kit/**"
+      - ".github/workflows/verifier-gate.yml"
+
+# 같은 ref에서 새 push가 오면 이전 실행 취소(리소스 절약)
+concurrency:
+  group: verifier-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # verifier-kit은 표준 라이브러리만 쓴다 — 의존성 설치 단계 없음.
+      - name: Run verifier gate (self-test + 전 에이전트 매설 거부율)
+        env:
+          MIN_REJECT: "0.8"   # 매설 거부율 임계 — 필요 시 상향
+        run: bash verifier-kit/ci/run-gate.sh
